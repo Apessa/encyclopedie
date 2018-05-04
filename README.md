@@ -1,6 +1,12 @@
 # encyclopedie
 Encyclopédie - base de connaissance sur les notions diverses
 
+## Membres du groupe
+- AISSAH
+- BEBOU
+- GMAKOUBA
+- NOUGNANKE
+
 ## Objectif
 L'objectif de ce projet est  de réaliser une base de connaissance pour ESGIS, afin d'avoir une source pérenne d'information au sein de l'école (le Wikipedia d'ESGIS).
 
