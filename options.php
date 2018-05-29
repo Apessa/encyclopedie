@@ -1,302 +1,624 @@
 <?php
+
 /**
- * Options Management Administration Screen.
+ * bbPress Options
  *
- * If accessed directly in a browser this page shows a list of all saved options
- * along with editable fields for their values. Serialized data is not supported
- * and there is no way to remove options via this page. It is not linked to from
- * anywhere else in the admin.
- *
- * This file is also the target of the forms in core and custom options pages
- * that use the Settings API. In this case it saves the new option values
- * and returns the user to their page of origin.
- *
- * @package WordPress
- * @subpackage Administration
+ * @package bbPress
+ * @subpackage Options
  */
 
-/** WordPress Administration Bootstrap */
-require_once( dirname( __FILE__ ) . '/admin.php' );
+// Exit if accessed directly
+if ( !defined( 'ABSPATH' ) ) exit;
 
-$title = __('Settings');
-$this_file = 'options.php';
-$parent_file = 'options-general.php';
+/**
+ * Get the default site options and their values.
+ * 
+ * These option
+ *
+ * @since bbPress (r3421)
+ * @return array Filtered option names and values
+ */
+function bbp_get_default_options() {
 
-wp_reset_vars(array('action', 'option_page'));
+	// Default options
+	return apply_filters( 'bbp_get_default_options', array(
 
-$capability = 'manage_options';
+		/** DB Version ********************************************************/
 
-// This is for back compat and will eventually be removed.
-if ( empty($option_page) ) {
-	$option_page = 'options';
-} else {
+		'_bbp_db_version'           => bbpress()->db_version,
 
-	/**
-	 * Filters the capability required when using the Settings API.
-	 *
-	 * By default, the options groups for all registered settings require the manage_options capability.
-	 * This filter is required to change the capability required for a certain options page.
-	 *
-	 * @since 3.2.0
-	 *
-	 * @param string $capability The capability used for the page, which is manage_options by default.
-	 */
-	$capability = apply_filters( "option_page_capability_{$option_page}", $capability );
-}
+		/** Settings **********************************************************/
 
-if ( ! current_user_can( $capability ) ) {
-	wp_die(
-		'<h1>' . __( 'You need a higher level of permission.' ) . '</h1>' .
-		'<p>' . __( 'Sorry, you are not allowed to manage these options.' ) . '</p>',
-		403
-	);
-}
+		'_bbp_edit_lock'              => 5,                          // Lock post editing after 5 minutes
+		'_bbp_throttle_time'          => 10,                         // Throttle post time to 10 seconds
+		'_bbp_enable_favorites'       => 1,                          // Favorites
+		'_bbp_enable_subscriptions'   => 1,                          // Subscriptions
+		'_bbp_allow_anonymous'        => 0,                          // Allow anonymous posting
+		'_bbp_allow_global_access'    => 1,                          // Users from all sites can post
+		'_bbp_allow_revisions'        => 1,                          // Allow revisions
+		'_bbp_allow_topic_tags'       => 1,                          // Allow topic tagging
+		'_bbp_allow_threaded_replies' => 0,                          // Allow threaded replies
+		'_bbp_allow_search'           => 1,                          // Allow forum-wide search
+		'_bbp_thread_replies_depth'   => 2,                          // Thread replies depth
+		'_bbp_use_wp_editor'          => 1,                          // Use the WordPress editor if available
+		'_bbp_use_autoembed'          => 0,                          // Allow oEmbed in topics and replies
+		'_bbp_theme_package_id'       => 'default',                  // The ID for the current theme package
+		'_bbp_default_role'           => bbp_get_participant_role(), // Default forums role
+		'_bbp_settings_integration'   => 0,                          // Put settings into existing admin pages
 
-// Handle admin email change requests
-if ( ! empty( $_GET[ 'adminhash' ] ) ) {
-	$new_admin_details = get_option( 'adminhash' );
-	$redirect = 'options-general.php?updated=false';
-	if ( is_array( $new_admin_details ) && hash_equals( $new_admin_details[ 'hash' ], $_GET[ 'adminhash' ] ) && ! empty( $new_admin_details[ 'newemail' ] ) ) {
-		update_option( 'admin_email', $new_admin_details[ 'newemail' ] );
-		delete_option( 'adminhash' );
-		delete_option( 'new_admin_email' );
-		$redirect = 'options-general.php?updated=true';
-	}
-	wp_redirect( admin_url( $redirect ) );
-	exit;
-} elseif ( ! empty( $_GET['dismiss'] ) && 'new_admin_email' == $_GET['dismiss'] ) {
-	check_admin_referer( 'dismiss-' . get_current_blog_id() . '-new_admin_email' );
-	delete_option( 'adminhash' );
-	delete_option( 'new_admin_email' );
-	wp_redirect( admin_url( 'options-general.php?updated=true' ) );
-	exit;
-}
+		/** Per Page **********************************************************/
 
-if ( is_multisite() && ! current_user_can( 'manage_network_options' ) && 'update' != $action ) {
-	wp_die(
-		'<h1>' . __( 'You need a higher level of permission.' ) . '</h1>' .
-		'<p>' . __( 'Sorry, you are not allowed to delete these items.' ) . '</p>',
-		403
-	);
-}
+		'_bbp_topics_per_page'      => 15,          // Topics per page
+		'_bbp_replies_per_page'     => 15,          // Replies per page
+		'_bbp_forums_per_page'      => 50,          // Forums per page
+		'_bbp_topics_per_rss_page'  => 25,          // Topics per RSS page
+		'_bbp_replies_per_rss_page' => 25,          // Replies per RSS page
 
-$whitelist_options = array(
-	'general' => array( 'blogname', 'blogdescription', 'gmt_offset', 'date_format', 'time_format', 'start_of_week', 'timezone_string', 'WPLANG', 'new_admin_email' ),
-	'discussion' => array( 'default_pingback_flag', 'default_ping_status', 'default_comment_status', 'comments_notify', 'moderation_notify', 'comment_moderation', 'require_name_email', 'comment_whitelist', 'comment_max_links', 'moderation_keys', 'blacklist_keys', 'show_avatars', 'avatar_rating', 'avatar_default', 'close_comments_for_old_posts', 'close_comments_days_old', 'thread_comments', 'thread_comments_depth', 'page_comments', 'comments_per_page', 'default_comments_page', 'comment_order', 'comment_registration' ),
-	'media' => array( 'thumbnail_size_w', 'thumbnail_size_h', 'thumbnail_crop', 'medium_size_w', 'medium_size_h', 'large_size_w', 'large_size_h', 'image_default_size', 'image_default_align', 'image_default_link_type' ),
-	'reading' => array( 'posts_per_page', 'posts_per_rss', 'rss_use_excerpt', 'show_on_front', 'page_on_front', 'page_for_posts', 'blog_public' ),
-	'writing' => array( 'default_category', 'default_email_category', 'default_link_category', 'default_post_format' )
-);
-$whitelist_options['misc'] = $whitelist_options['options'] = $whitelist_options['privacy'] = array();
+		/** Page For **********************************************************/
 
-$mail_options = array('mailserver_url', 'mailserver_port', 'mailserver_login', 'mailserver_pass');
+		'_bbp_page_for_forums'      => 0,           // Page for forums
+		'_bbp_page_for_topics'      => 0,           // Page for forums
+		'_bbp_page_for_login'       => 0,           // Page for login
+		'_bbp_page_for_register'    => 0,           // Page for register
+		'_bbp_page_for_lost_pass'   => 0,           // Page for lost-pass
 
-if ( ! in_array( get_option( 'blog_charset' ), array( 'utf8', 'utf-8', 'UTF8', 'UTF-8' ) ) )
-	$whitelist_options['reading'][] = 'blog_charset';
+		/** Forum Root ********************************************************/
 
-if ( get_site_option( 'initial_db_version' ) < 32453 ) {
-	$whitelist_options['writing'][] = 'use_smilies';
-	$whitelist_options['writing'][] = 'use_balanceTags';
-}
+		'_bbp_root_slug'            => 'forums',    // Forum archive slug
+		'_bbp_show_on_root'         => 'forums',    // What to show on root (forums|topics)
+		'_bbp_include_root'         => 1,           // Include forum-archive before single slugs
 
-if ( !is_multisite() ) {
-	if ( !defined( 'WP_SITEURL' ) )
-		$whitelist_options['general'][] = 'siteurl';
-	if ( !defined( 'WP_HOME' ) )
-		$whitelist_options['general'][] = 'home';
+		/** Single Slugs ******************************************************/
 
-	$whitelist_options['general'][] = 'users_can_register';
-	$whitelist_options['general'][] = 'default_role';
+		'_bbp_forum_slug'           => 'forum',     // Forum slug
+		'_bbp_topic_slug'           => 'topic',     // Topic slug
+		'_bbp_reply_slug'           => 'reply',     // Reply slug
+		'_bbp_topic_tag_slug'       => 'topic-tag', // Topic tag slug
 
-	$whitelist_options['writing'] = array_merge($whitelist_options['writing'], $mail_options);
-	$whitelist_options['writing'][] = 'ping_sites';
+		/** User Slugs ********************************************************/
 
-	$whitelist_options['media'][] = 'uploads_use_yearmonth_folders';
+		'_bbp_user_slug'            => 'users',         // User profile slug
+		'_bbp_user_favs_slug'       => 'favorites',     // User favorites slug
+		'_bbp_user_subs_slug'       => 'subscriptions', // User subscriptions slug
+		'_bbp_topic_archive_slug'   => 'topics',        // Topic archive slug
+		'_bbp_reply_archive_slug'   => 'replies',       // Reply archive slug
 
-	// If upload_url_path and upload_path are both default values, they're locked.
-	if ( get_option( 'upload_url_path' ) || ( get_option('upload_path') != 'wp-content/uploads' && get_option('upload_path') ) ) {
-		$whitelist_options['media'][] = 'upload_path';
-		$whitelist_options['media'][] = 'upload_url_path';
-	}
-} else {
-	/**
-	 * Filters whether the post-by-email functionality is enabled.
-	 *
-	 * @since 3.0.0
-	 *
-	 * @param bool $enabled Whether post-by-email configuration is enabled. Default true.
-	 */
-	if ( apply_filters( 'enable_post_by_email_configuration', true ) )
-		$whitelist_options['writing'] = array_merge($whitelist_options['writing'], $mail_options);
+		/** Other Slugs *******************************************************/
+
+		'_bbp_view_slug'            => 'view',      // View slug
+		'_bbp_search_slug'          => 'search',    // Search slug
+
+		/** Topics ************************************************************/
+
+		'_bbp_title_max_length'     => 80,          // Title Max Length
+		'_bbp_super_sticky_topics'  => '',          // Super stickies
+
+		/** Forums ************************************************************/
+
+		'_bbp_private_forums'       => '',          // Private forums
+		'_bbp_hidden_forums'        => '',          // Hidden forums
+
+		/** BuddyPress ********************************************************/
+
+		'_bbp_enable_group_forums'  => 1,           // Enable BuddyPress Group Extension
+		'_bbp_group_forums_root_id' => 0,           // Group Forums parent forum id
+
+		/** Akismet ***********************************************************/
+
+		'_bbp_enable_akismet'       => 1            // Users from all sites can post
+
+	) );
 }
 
 /**
- * Filters the options white list.
+ * Add default options
  *
- * @since 2.7.0
+ * Hooked to bbp_activate, it is only called once when bbPress is activated.
+ * This is non-destructive, so existing settings will not be overridden.
  *
- * @param array $whitelist_options White list options.
+ * @since bbPress (r3421)
+ * @uses bbp_get_default_options() To get default options
+ * @uses add_option() Adds default options
+ * @uses do_action() Calls 'bbp_add_options'
  */
-$whitelist_options = apply_filters( 'whitelist_options', $whitelist_options );
+function bbp_add_options() {
 
-/*
- * If $_GET['action'] == 'update' we are saving settings sent from a settings page
- */
-if ( 'update' == $action ) {
-	if ( 'options' == $option_page && !isset( $_POST['option_page'] ) ) { // This is for back compat and will eventually be removed.
-		$unregistered = true;
-		check_admin_referer( 'update-options' );
-	} else {
-		$unregistered = false;
-		check_admin_referer( $option_page . '-options' );
-	}
+	// Add default options
+	foreach ( bbp_get_default_options() as $key => $value )
+		add_option( $key, $value );
 
-	if ( !isset( $whitelist_options[ $option_page ] ) )
-		wp_die( __( '<strong>ERROR</strong>: options page not found.' ) );
-
-	if ( 'options' == $option_page ) {
-		if ( is_multisite() && ! current_user_can( 'manage_network_options' ) ) {
-			wp_die( __( 'Sorry, you are not allowed to modify unregistered settings for this site.' ) );
-		}
-		$options = explode( ',', wp_unslash( $_POST[ 'page_options' ] ) );
-	} else {
-		$options = $whitelist_options[ $option_page ];
-	}
-
-	if ( 'general' == $option_page ) {
-		// Handle custom date/time formats.
-		if ( !empty($_POST['date_format']) && isset($_POST['date_format_custom']) && '\c\u\s\t\o\m' == wp_unslash( $_POST['date_format'] ) )
-			$_POST['date_format'] = $_POST['date_format_custom'];
-		if ( !empty($_POST['time_format']) && isset($_POST['time_format_custom']) && '\c\u\s\t\o\m' == wp_unslash( $_POST['time_format'] ) )
-			$_POST['time_format'] = $_POST['time_format_custom'];
-		// Map UTC+- timezones to gmt_offsets and set timezone_string to empty.
-		if ( !empty($_POST['timezone_string']) && preg_match('/^UTC[+-]/', $_POST['timezone_string']) ) {
-			$_POST['gmt_offset'] = $_POST['timezone_string'];
-			$_POST['gmt_offset'] = preg_replace('/UTC\+?/', '', $_POST['gmt_offset']);
-			$_POST['timezone_string'] = '';
-		}
-
-		// Handle translation installation.
-		if ( ! empty( $_POST['WPLANG'] ) && current_user_can( 'install_languages' ) ) {
-			require_once( ABSPATH . 'wp-admin/includes/translation-install.php' );
-
-			if ( wp_can_install_language_pack() ) {
-				$language = wp_download_language_pack( $_POST['WPLANG'] );
-				if ( $language ) {
-					$_POST['WPLANG'] = $language;
-				}
-			}
-		}
-	}
-
-	if ( $options ) {
-		$user_language_old = get_user_locale();
-
-		foreach ( $options as $option ) {
-			if ( $unregistered ) {
-				_deprecated_argument( 'options.php', '2.7.0',
-					sprintf(
-						/* translators: %s: the option/setting */
-						__( 'The %s setting is unregistered. Unregistered settings are deprecated. See https://codex.wordpress.org/Settings_API' ),
-						'<code>' . $option . '</code>'
-					)
-				);
-			}
-
-			$option = trim( $option );
-			$value = null;
-			if ( isset( $_POST[ $option ] ) ) {
-				$value = $_POST[ $option ];
-				if ( ! is_array( $value ) ) {
-					$value = trim( $value );
-				}
-				$value = wp_unslash( $value );
-			}
-			update_option( $option, $value );
-		}
-
-		/*
-		 * Switch translation in case WPLANG was changed.
-		 * The global $locale is used in get_locale() which is
-		 * used as a fallback in get_user_locale().
-		 */
-		unset( $GLOBALS['locale'] );
-		$user_language_new = get_user_locale();
-		if ( $user_language_old !== $user_language_new  ) {
-			load_default_textdomain( $user_language_new );
-		}
-	}
-
-	/**
-	 * Handle settings errors and return to options page
-	 */
-	// If no settings errors were registered add a general 'updated' message.
-	if ( !count( get_settings_errors() ) )
-		add_settings_error('general', 'settings_updated', __('Settings saved.'), 'updated');
-	set_transient('settings_errors', get_settings_errors(), 30);
-
-	/**
-	 * Redirect back to the settings page that was submitted
-	 */
-	$goback = add_query_arg( 'settings-updated', 'true',  wp_get_referer() );
-	wp_redirect( $goback );
-	exit;
+	// Allow previously activated plugins to append their own options.
+	do_action( 'bbp_add_options' );
 }
 
-include( ABSPATH . 'wp-admin/admin-header.php' ); ?>
+/**
+ * Delete default options
+ *
+ * Hooked to bbp_uninstall, it is only called once when bbPress is uninstalled.
+ * This is destructive, so existing settings will be destroyed.
+ *
+ * @since bbPress (r3421)
+ * @uses bbp_get_default_options() To get default options
+ * @uses delete_option() Removes default options
+ * @uses do_action() Calls 'bbp_delete_options'
+ */
+function bbp_delete_options() {
 
-<div class="wrap">
-  <h1><?php esc_html_e( 'All Settings' ); ?></h1>
-  <form name="form" action="options.php" method="post" id="all-options">
-  <?php wp_nonce_field('options-options') ?>
-  <input type="hidden" name="action" value="update" />
-  <input type="hidden" name="option_page" value="options" />
-  <table class="form-table">
-<?php
-$options = $wpdb->get_results( "SELECT * FROM $wpdb->options ORDER BY option_name" );
+	// Add default options
+	foreach ( array_keys( bbp_get_default_options() ) as $key )
+		delete_option( $key );
 
-foreach ( (array) $options as $option ) :
-	$disabled = false;
-	if ( $option->option_name == '' )
-		continue;
-	if ( is_serialized( $option->option_value ) ) {
-		if ( is_serialized_string( $option->option_value ) ) {
-			// This is a serialized string, so we should display it.
-			$value = maybe_unserialize( $option->option_value );
-			$options_to_update[] = $option->option_name;
-			$class = 'all-options';
-		} else {
-			$value = 'SERIALIZED DATA';
-			$disabled = true;
-			$class = 'all-options disabled';
-		}
-	} else {
-		$value = $option->option_value;
-		$options_to_update[] = $option->option_name;
-		$class = 'all-options';
+	// Allow previously activated plugins to append their own options.
+	do_action( 'bbp_delete_options' );
+}
+
+/**
+ * Add filters to each bbPress option and allow them to be overloaded from
+ * inside the $bbp->options array.
+ *
+ * @since bbPress (r3451)
+ * @uses bbp_get_default_options() To get default options
+ * @uses add_filter() To add filters to 'pre_option_{$key}'
+ * @uses do_action() Calls 'bbp_add_option_filters'
+ */
+function bbp_setup_option_filters() {
+
+	// Add filters to each bbPress option
+	foreach ( array_keys( bbp_get_default_options() ) as $key )
+		add_filter( 'pre_option_' . $key, 'bbp_pre_get_option' );
+
+	// Allow previously activated plugins to append their own options.
+	do_action( 'bbp_setup_option_filters' );
+}
+
+/**
+ * Filter default options and allow them to be overloaded from inside the
+ * $bbp->options array.
+ *
+ * @since bbPress (r3451)
+ * @param bool $value Optional. Default value false
+ * @return mixed false if not overloaded, mixed if set
+ */
+function bbp_pre_get_option( $value = '' ) {
+
+	// Remove the filter prefix
+	$option = str_replace( 'pre_option_', '', current_filter() );
+
+	// Check the options global for preset value
+	if ( isset( bbpress()->options[$option] ) )
+		$value = bbpress()->options[$option];
+
+	// Always return a value, even if false
+	return $value;
+}
+
+/** Active? *******************************************************************/
+
+/**
+ * Checks if favorites feature is enabled.
+ *
+ * @since bbPress (r2658)
+ * @param $default bool Optional.Default value true
+ * @uses get_option() To get the favorites option
+ * @return bool Is favorites enabled or not
+ */
+function bbp_is_favorites_active( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_is_favorites_active', (bool) get_option( '_bbp_enable_favorites', $default ) );
+}
+
+/**
+ * Checks if subscription feature is enabled.
+ *
+ * @since bbPress (r2658)
+ * @param $default bool Optional.Default value true
+ * @uses get_option() To get the subscriptions option
+ * @return bool Is subscription enabled or not
+ */
+function bbp_is_subscriptions_active( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_is_subscriptions_active', (bool) get_option( '_bbp_enable_subscriptions', $default ) );
+}
+
+/**
+ * Are topic tags allowed
+ *
+ * @since bbPress (r4097)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the allow tags
+ * @return bool Are tags allowed?
+ */
+function bbp_allow_topic_tags( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_allow_topic_tags', (bool) get_option( '_bbp_allow_topic_tags', $default ) );
+}
+
+/**
+ * Is forum-wide searching allowed
+ *
+ * @since bbPress (r4970)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the forum-wide search setting
+ * @return bool Is forum-wide searching allowed?
+ */
+function bbp_allow_search( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_allow_search', (bool) get_option( '_bbp_allow_search', $default ) );
+}
+
+/**
+ * Are replies threaded
+ *
+ * @since bbPress (r4944)
+ *
+ * @param bool $default Optional. Default value true
+ * @uses apply_filters() Calls 'bbp_thread_replies' with the calculated value and
+ *                        the thread replies depth
+ * @uses get_option() To get thread replies option
+ * @return bool Are replies threaded?
+ */
+function bbp_thread_replies() {
+	$depth  = bbp_thread_replies_depth();
+	$allow  = bbp_allow_threaded_replies();
+	$retval = (bool) ( ( $depth >= 2 ) && ( true === $allow ) );
+
+	return (bool) apply_filters( 'bbp_thread_replies', $retval, $depth, $allow );
+}
+
+/**
+ * Are threaded replies allowed
+ *
+ * @since bbPress (r4964)
+ * @param $default bool Optional. Default value false
+ * @uses get_option() To get the threaded replies setting
+ * @return bool Are threaded replies allowed?
+ */
+function bbp_allow_threaded_replies( $default = 0 ) {
+	return (bool) apply_filters( '_bbp_allow_threaded_replies', (bool) get_option( '_bbp_allow_threaded_replies', $default ) );
+}
+
+/**
+ * Maximum reply thread depth
+ *
+ * @since bbPress (r4944)
+ *
+ * @param int $default Thread replies depth
+ * @uses apply_filters() Calls 'bbp_thread_replies_depth' with the option value and
+ *                       the default depth
+ * @uses get_option() To get the thread replies depth
+ * @return int Thread replies depth
+ */
+function bbp_thread_replies_depth( $default = 2 ) {
+	return (int) apply_filters( 'bbp_thread_replies_depth', (int) get_option( '_bbp_thread_replies_depth', $default ) );
+}
+
+/**
+ * Are topic and reply revisions allowed
+ *
+ * @since bbPress (r3412)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the allow revisions
+ * @return bool Are revisions allowed?
+ */
+function bbp_allow_revisions( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_allow_revisions', (bool) get_option( '_bbp_allow_revisions', $default ) );
+}
+
+/**
+ * Is the anonymous posting allowed?
+ *
+ * @since bbPress (r2659)
+ * @param $default bool Optional. Default value
+ * @uses get_option() To get the allow anonymous option
+ * @return bool Is anonymous posting allowed?
+ */
+function bbp_allow_anonymous( $default = 0 ) {
+	return apply_filters( 'bbp_allow_anonymous', (bool) get_option( '_bbp_allow_anonymous', $default ) );
+}
+
+/**
+ * Is this forum available to all users on all sites in this installation?
+ *
+ * @since bbPress (r3378)
+ * @param $default bool Optional. Default value false
+ * @uses get_option() To get the global access option
+ * @return bool Is global access allowed?
+ */
+function bbp_allow_global_access( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_allow_global_access', (bool) get_option( '_bbp_allow_global_access', $default ) );
+}
+
+/**
+ * Is this forum available to all users on all sites in this installation?
+ *
+ * @since bbPress (r4294)
+ * @param $default string Optional. Default value empty
+ * @uses get_option() To get the default forums role option
+ * @return string The default forums user role
+ */
+function bbp_get_default_role( $default = 'bbp_participant' ) {
+	return apply_filters( 'bbp_get_default_role', get_option( '_bbp_default_role', $default ) );
+}
+
+/**
+ * Use the WordPress editor if available
+ *
+ * @since bbPress (r3386)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the WP editor option
+ * @return bool Use WP editor?
+ */
+function bbp_use_wp_editor( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_use_wp_editor', (bool) get_option( '_bbp_use_wp_editor', $default ) );
+}
+
+/**
+ * Use WordPress's oEmbed API
+ *
+ * @since bbPress (r3752)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the oEmbed option
+ * @return bool Use oEmbed?
+ */
+function bbp_use_autoembed( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_use_autoembed', (bool) get_option( '_bbp_use_autoembed', $default ) );
+}
+
+/**
+ * Get the current theme package ID
+ *
+ * @since bbPress (r3829)
+ * @param $default string Optional. Default value 'default'
+ * @uses get_option() To get the subtheme option
+ * @return string ID of the subtheme
+ */
+function bbp_get_theme_package_id( $default = 'default' ) {
+	return apply_filters( 'bbp_get_theme_package_id', get_option( '_bbp_theme_package_id', $default ) );
+}
+
+/**
+ * Output the maximum length of a title
+ *
+ * @since bbPress (r3246)
+ * @param $default bool Optional. Default value 80
+ */
+function bbp_title_max_length( $default = 80 ) {
+	echo bbp_get_title_max_length( $default );
+}
+	/**
+	 * Return the maximum length of a title
+	 *
+	 * @since bbPress (r3246)
+	 * @param $default bool Optional. Default value 80
+	 * @uses get_option() To get the maximum title length
+	 * @return int Is anonymous posting allowed?
+	 */
+	function bbp_get_title_max_length( $default = 80 ) {
+		return (int) apply_filters( 'bbp_get_title_max_length', (int) get_option( '_bbp_title_max_length', $default ) );
 	}
-	$name = esc_attr( $option->option_name );
-	?>
-<tr>
-	<th scope="row"><label for="<?php echo $name ?>"><?php echo esc_html( $option->option_name ); ?></label></th>
-<td>
-<?php if ( strpos( $value, "\n" ) !== false ) : ?>
-	<textarea class="<?php echo $class ?>" name="<?php echo $name ?>" id="<?php echo $name ?>" cols="30" rows="5"><?php
-		echo esc_textarea( $value );
-	?></textarea>
-	<?php else: ?>
-		<input class="regular-text <?php echo $class ?>" type="text" name="<?php echo $name ?>" id="<?php echo $name ?>" value="<?php echo esc_attr( $value ) ?>"<?php disabled( $disabled, true ) ?> />
-	<?php endif ?></td>
-</tr>
-<?php endforeach; ?>
-  </table>
 
-<input type="hidden" name="page_options" value="<?php echo esc_attr( implode( ',', $options_to_update ) ); ?>" />
+/**
+ * Output the grop forums root parent forum id
+ *
+ * @since bbPress (r3575)
+ * @param $default int Optional. Default value
+ */
+function bbp_group_forums_root_id( $default = 0 ) {
+	echo bbp_get_group_forums_root_id( $default );
+}
+	/**
+	 * Return the grop forums root parent forum id
+	 *
+	 * @since bbPress (r3575)
+	 * @param $default bool Optional. Default value 0
+	 * @uses get_option() To get the root group forum ID
+	 * @return int The post ID for the root forum
+	 */
+	function bbp_get_group_forums_root_id( $default = 0 ) {
+		return (int) apply_filters( 'bbp_get_group_forums_root_id', (int) get_option( '_bbp_group_forums_root_id', $default ) );
+	}
 
-<?php submit_button( __( 'Save Changes' ), 'primary', 'Update' ); ?>
+/**
+ * Checks if BuddyPress Group Forums are enabled
+ *
+ * @since bbPress (r3575)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the group forums option
+ * @return bool Is group forums enabled or not
+ */
+function bbp_is_group_forums_active( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_is_group_forums_active', (bool) get_option( '_bbp_enable_group_forums', $default ) );
+}
 
-  </form>
-</div>
+/**
+ * Checks if Akismet is enabled
+ *
+ * @since bbPress (r3575)
+ * @param $default bool Optional. Default value true
+ * @uses get_option() To get the Akismet option
+ * @return bool Is Akismet enabled or not
+ */
+function bbp_is_akismet_active( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_is_akismet_active', (bool) get_option( '_bbp_enable_akismet', $default ) );
+}
 
-<?php
-include( ABSPATH . 'wp-admin/admin-footer.php' );
+/**
+ * Integrate settings into existing WordPress pages
+ *
+ * @since bbPress (r4932)
+ * @param $default bool Optional. Default value false
+ * @uses get_option() To get the admin integration setting
+ * @return bool To deeply integrate settings, or not
+ */
+function bbp_settings_integration( $default = 0 ) {
+	return (bool) apply_filters( 'bbp_settings_integration', (bool) get_option( '_bbp_settings_integration', $default ) );
+}
+
+/** Slugs *********************************************************************/
+
+/**
+ * Return the root slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_root_slug( $default = 'forums' ) {
+	return apply_filters( 'bbp_get_root_slug', get_option( '_bbp_root_slug', $default ) );
+}
+
+/**
+ * Are we including the root slug in front of forum pages?
+ *
+ * @since bbPress (r3759)
+ * @return bool
+ */
+function bbp_include_root_slug( $default = 1 ) {
+	return (bool) apply_filters( 'bbp_include_root_slug', (bool) get_option( '_bbp_include_root', $default ) );
+}
+
+/**
+ * Return the search slug
+ *
+ * @since bbPress (r4932)
+ *
+ * @return string
+ */
+function bbp_show_on_root( $default = 'forums' ) {
+	return apply_filters( 'bbp_show_on_root', get_option( '_bbp_show_on_root', $default ) );
+}
+
+/**
+ * Maybe return the root slug, based on whether or not it's included in the url
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_maybe_get_root_slug() {
+	$retval = '';
+
+	if ( bbp_get_root_slug() && bbp_include_root_slug() )
+		$retval = trailingslashit( bbp_get_root_slug() );
+
+	return apply_filters( 'bbp_maybe_get_root_slug', $retval );
+}
+
+/**
+ * Return the single forum slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_forum_slug( $default = 'forum' ) {;
+	return apply_filters( 'bbp_get_root_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_forum_slug', $default ) );
+}
+
+/**
+ * Return the topic archive slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_topic_archive_slug( $default = 'topics' ) {
+	return apply_filters( 'bbp_get_topic_archive_slug', get_option( '_bbp_topic_archive_slug', $default ) );
+}
+
+/**
+ * Return the reply archive slug
+ *
+ * @since bbPress (r4925)
+ * @return string
+ */
+function bbp_get_reply_archive_slug( $default = 'replies' ) {
+	return apply_filters( 'bbp_get_reply_archive_slug', get_option( '_bbp_reply_archive_slug', $default ) );
+}
+
+/**
+ * Return the single topic slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_topic_slug( $default = 'topic' ) {
+	return apply_filters( 'bbp_get_topic_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_topic_slug', $default ) );
+}
+
+/**
+ * Return the topic-tag taxonomy slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_topic_tag_tax_slug( $default = 'topic-tag' ) {
+	return apply_filters( 'bbp_get_topic_tag_tax_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_topic_tag_slug', $default ) );
+}
+
+/**
+ * Return the single reply slug (used mostly for editing)
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_reply_slug( $default = 'reply' ) {
+	return apply_filters( 'bbp_get_reply_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_reply_slug', $default ) );
+}
+
+/**
+ * Return the single user slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_user_slug( $default = 'user' ) {
+	return apply_filters( 'bbp_get_user_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_user_slug', $default ) );
+}
+
+/**
+ * Return the single user favorites slug
+ *
+ * @since bbPress (r4187)
+ * @return string
+ */
+function bbp_get_user_favorites_slug( $default = 'favorites' ) {
+	return apply_filters( 'bbp_get_user_favorites_slug', get_option( '_bbp_user_favs_slug', $default ) );
+}
+
+/**
+ * Return the single user subscriptions slug
+ *
+ * @since bbPress (r4187)
+ * @return string
+ */
+function bbp_get_user_subscriptions_slug( $default = 'subscriptions' ) {
+	return apply_filters( 'bbp_get_user_subscriptions_slug', get_option( '_bbp_user_subs_slug', $default ) );
+}
+
+/**
+ * Return the topic view slug
+ *
+ * @since bbPress (r3759)
+ * @return string
+ */
+function bbp_get_view_slug( $default = 'view' ) {
+	return apply_filters( 'bbp_get_view_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_view_slug', $default ) );
+}
+
+/**
+ * Return the search slug
+ *
+ * @since bbPress (r4579)
+ *
+ * @return string
+ */
+function bbp_get_search_slug( $default = 'search' ) {
+	return apply_filters( 'bbp_get_search_slug', bbp_maybe_get_root_slug() . get_option( '_bbp_search_slug', $default ) );
+}
+
+/** Legacy ********************************************************************/
+
+/**
+ * Checks if there is a previous BuddyPress Forum configuration
+ *
+ * @since bbPress (r3790)
+ * @param $default string Optional. Default empty string
+ * @uses get_option() To get the old bb-config.php location
+ * @return string The location of the bb-config.php file, if any
+ */
+function bbp_get_config_location( $default = '' ) {
+	return apply_filters( 'bbp_get_config_location', get_option( 'bb-config-location', $default ) );
+}

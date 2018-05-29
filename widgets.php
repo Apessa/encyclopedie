@@ -1,524 +1,1275 @@
 <?php
-/**
- * Widget administration panel
- *
- * @package WordPress
- * @subpackage Administration
- */
-
-/** WordPress Administration Bootstrap */
-require_once( dirname( __FILE__ ) . '/admin.php' );
-
-/** WordPress Administration Widgets API */
-require_once(ABSPATH . 'wp-admin/includes/widgets.php');
-
-if ( ! current_user_can( 'edit_theme_options' ) ) {
-	wp_die(
-		'<h1>' . __( 'You need a higher level of permission.' ) . '</h1>' .
-		'<p>' . __( 'Sorry, you are not allowed to edit theme options on this site.' ) . '</p>',
-		403
-	);
-}
-
-$widgets_access = get_user_setting( 'widgets_access' );
-if ( isset($_GET['widgets-access']) ) {
-	check_admin_referer( 'widgets-access' );
-
-	$widgets_access = 'on' == $_GET['widgets-access'] ? 'on' : 'off';
-	set_user_setting( 'widgets_access', $widgets_access );
-}
-
-if ( 'on' == $widgets_access ) {
-	add_filter( 'admin_body_class', 'wp_widgets_access_body_class' );
-} else {
-	wp_enqueue_script('admin-widgets');
-
-	if ( wp_is_mobile() )
-		wp_enqueue_script( 'jquery-touch-punch' );
-}
 
 /**
- * Fires early before the Widgets administration screen loads,
- * after scripts are enqueued.
+ * bbPress Widgets
  *
- * @since 2.2.0
+ * Contains the forum list, topic list, reply list and login form widgets.
+ *
+ * @package bbPress
+ * @subpackage Widgets
  */
-do_action( 'sidebar_admin_setup' );
 
-$title = __( 'Widgets' );
-$parent_file = 'themes.php';
+// Exit if accessed directly
+if ( !defined( 'ABSPATH' ) ) exit;
 
-get_current_screen()->add_help_tab( array(
-'id'		=> 'overview',
-'title'		=> __('Overview'),
-'content'	=>
-	'<p>' . __('Widgets are independent sections of content that can be placed into any widgetized area provided by your theme (commonly called sidebars). To populate your sidebars/widget areas with individual widgets, drag and drop the title bars into the desired area. By default, only the first widget area is expanded. To populate additional widget areas, click on their title bars to expand them.') . '</p>
-	<p>' . __('The Available Widgets section contains all the widgets you can choose from. Once you drag a widget into a sidebar, it will open to allow you to configure its settings. When you are happy with the widget settings, click the Save button and the widget will go live on your site. If you click Delete, it will remove the widget.') . '</p>'
-) );
-get_current_screen()->add_help_tab( array(
-'id'		=> 'removing-reusing',
-'title'		=> __('Removing and Reusing'),
-'content'	=>
-	'<p>' . __('If you want to remove the widget but save its setting for possible future use, just drag it into the Inactive Widgets area. You can add them back anytime from there. This is especially helpful when you switch to a theme with fewer or different widget areas.') . '</p>
-	<p>' . __('Widgets may be used multiple times. You can give each widget a title, to display on your site, but it&#8217;s not required.') . '</p>
-	<p>' . __('Enabling Accessibility Mode, via Screen Options, allows you to use Add and Edit buttons instead of using drag and drop.') . '</p>'
-) );
-get_current_screen()->add_help_tab( array(
-'id'		=> 'missing-widgets',
-'title'		=> __('Missing Widgets'),
-'content'	=>
-	'<p>' . __('Many themes show some sidebar widgets by default until you edit your sidebars, but they are not automatically displayed in your sidebar management tool. After you make your first widget change, you can re-add the default widgets by adding them from the Available Widgets area.') . '</p>' .
-		'<p>' . __('When changing themes, there is often some variation in the number and setup of widget areas/sidebars and sometimes these conflicts make the transition a bit less smooth. If you changed themes and seem to be missing widgets, scroll down on this screen to the Inactive Widgets area, where all of your widgets and their settings will have been saved.') . '</p>'
-) );
+/**
+ * bbPress Login Widget
+ *
+ * Adds a widget which displays the login form
+ *
+ * @since bbPress (r2827)
+ *
+ * @uses WP_Widget
+ */
+class BBP_Login_Widget extends WP_Widget {
 
-get_current_screen()->set_help_sidebar(
-	'<p><strong>' . __('For more information:') . '</strong></p>' .
-	'<p>' . __('<a href="https://codex.wordpress.org/Appearance_Widgets_Screen">Documentation on Widgets</a>') . '</p>' .
-	'<p>' . __('<a href="https://wordpress.org/support/">Support Forums</a>') . '</p>'
-);
+	/**
+	 * bbPress Login Widget
+	 *
+	 * Registers the login widget
+	 *
+	 * @since bbPress (r2827)
+	 *
+	 * @uses apply_filters() Calls 'bbp_login_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_login_widget_options', array(
+			'classname'   => 'bbp_widget_login',
+			'description' => __( 'A simple login form with optional links to sign-up and lost password pages.', 'bbpress' )
+		) );
 
-if ( ! current_theme_supports( 'widgets' ) ) {
-	wp_die( __( 'The theme you are currently using isn&#8217;t widget-aware, meaning that it has no sidebars that you are able to change. For information on making your theme widget-aware, please <a href="https://codex.wordpress.org/Widgetizing_Themes">follow these instructions</a>.' ) );
-}
+		parent::__construct( false, __( '(bbPress) Login Widget', 'bbpress' ), $widget_ops );
+	}
 
-// These are the widgets grouped by sidebar
-$sidebars_widgets = wp_get_sidebars_widgets();
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r3389)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Login_Widget' );
+	}
 
-if ( empty( $sidebars_widgets ) )
-	$sidebars_widgets = wp_get_widget_defaults();
+	/**
+	 * Displays the output, the login form
+	 *
+	 * @since bbPress (r2827)
+	 *
+	 * @param mixed $args Arguments
+	 * @param array $instance Instance
+	 * @uses apply_filters() Calls 'bbp_login_widget_title' with the title
+	 * @uses get_template_part() To get the login/logged in form
+	 */
+	public function widget( $args = array(), $instance = array() ) {
 
-foreach ( $sidebars_widgets as $sidebar_id => $widgets ) {
-	if ( 'wp_inactive_widgets' == $sidebar_id )
-		continue;
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
 
-	if ( ! is_registered_sidebar( $sidebar_id ) ) {
-		if ( ! empty( $widgets ) ) { // register the inactive_widgets area as sidebar
-			register_sidebar(array(
-				'name' => __( 'Inactive Sidebar (not used)' ),
-				'id' => $sidebar_id,
-				'class' => 'inactive-sidebar orphan-sidebar',
-				'description' => __( 'This sidebar is no longer available and does not show anywhere on your site. Remove each of the widgets below to fully remove this inactive sidebar.' ),
-				'before_widget' => '',
-				'after_widget' => '',
-				'before_title' => '',
-				'after_title' => '',
-			));
-		} else {
-			unset( $sidebars_widgets[ $sidebar_id ] );
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title', $settings['title'], $instance, $this->id_base );
+
+		// bbPress filters
+		$settings['title']    = apply_filters( 'bbp_login_widget_title',    $settings['title'],    $instance, $this->id_base );
+		$settings['register'] = apply_filters( 'bbp_login_widget_register', $settings['register'], $instance, $this->id_base );
+		$settings['lostpass'] = apply_filters( 'bbp_login_widget_lostpass', $settings['lostpass'], $instance, $this->id_base );
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
 		}
+
+		if ( !is_user_logged_in() ) : ?>
+
+			<form method="post" action="<?php bbp_wp_login_action( array( 'context' => 'login_post' ) ); ?>" class="bbp-login-form">
+				<fieldset>
+					<legend><?php _e( 'Log In', 'bbpress' ); ?></legend>
+
+					<div class="bbp-username">
+						<label for="user_login"><?php _e( 'Username', 'bbpress' ); ?>: </label>
+						<input type="text" name="log" value="<?php bbp_sanitize_val( 'user_login', 'text' ); ?>" size="20" id="user_login" tabindex="<?php bbp_tab_index(); ?>" />
+					</div>
+
+					<div class="bbp-password">
+						<label for="user_pass"><?php _e( 'Password', 'bbpress' ); ?>: </label>
+						<input type="password" name="pwd" value="<?php bbp_sanitize_val( 'user_pass', 'password' ); ?>" size="20" id="user_pass" tabindex="<?php bbp_tab_index(); ?>" />
+					</div>
+
+					<div class="bbp-remember-me">
+						<input type="checkbox" name="rememberme" value="forever" <?php checked( bbp_get_sanitize_val( 'rememberme', 'checkbox' ), true, true ); ?> id="rememberme" tabindex="<?php bbp_tab_index(); ?>" />
+						<label for="rememberme"><?php _e( 'Remember Me', 'bbpress' ); ?></label>
+					</div>
+
+					<div class="bbp-submit-wrapper">
+
+						<?php do_action( 'login_form' ); ?>
+
+						<button type="submit" name="user-submit" id="user-submit" tabindex="<?php bbp_tab_index(); ?>" class="button submit user-submit"><?php _e( 'Log In', 'bbpress' ); ?></button>
+
+						<?php bbp_user_login_fields(); ?>
+
+					</div>
+
+					<?php if ( !empty( $settings['register'] ) || !empty( $settings['lostpass'] ) ) : ?>
+
+						<div class="bbp-login-links">
+
+							<?php if ( !empty( $settings['register'] ) ) : ?>
+
+								<a href="<?php echo esc_url( $settings['register'] ); ?>" title="<?php esc_attr_e( 'Register', 'bbpress' ); ?>" class="bbp-register-link"><?php _e( 'Register', 'bbpress' ); ?></a>
+
+							<?php endif; ?>
+
+							<?php if ( !empty( $settings['lostpass'] ) ) : ?>
+
+								<a href="<?php echo esc_url( $settings['lostpass'] ); ?>" title="<?php esc_attr_e( 'Lost Password', 'bbpress' ); ?>" class="bbp-lostpass-link"><?php _e( 'Lost Password', 'bbpress' ); ?></a>
+
+							<?php endif; ?>
+
+						</div>
+
+					<?php endif; ?>
+
+				</fieldset>
+			</form>
+
+		<?php else : ?>
+
+			<div class="bbp-logged-in">
+				<a href="<?php bbp_user_profile_url( bbp_get_current_user_id() ); ?>" class="submit user-submit"><?php echo get_avatar( bbp_get_current_user_id(), '40' ); ?></a>
+				<h4><?php bbp_user_profile_link( bbp_get_current_user_id() ); ?></h4>
+
+				<?php bbp_logout_link(); ?>
+			</div>
+
+		<?php endif;
+
+		echo $args['after_widget'];
+	}
+
+	/**
+	 * Update the login widget options
+	 *
+	 * @since bbPress (r2827)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance, $old_instance ) {
+		$instance             = $old_instance;
+		$instance['title']    = strip_tags( $new_instance['title'] );
+		$instance['register'] = esc_url_raw( $new_instance['register'] );
+		$instance['lostpass'] = esc_url_raw( $new_instance['lostpass'] );
+
+		return $instance;
+	}
+
+	/**
+	 * Output the login widget options form
+	 *
+	 * @since bbPress (r2827)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Login_Widget::get_field_id() To output the field id
+	 * @uses BBP_Login_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'bbpress' ); ?>
+			<input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $settings['title'] ); ?>" /></label>
+		</p>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'register' ); ?>"><?php _e( 'Register URI:', 'bbpress' ); ?>
+			<input class="widefat" id="<?php echo $this->get_field_id( 'register' ); ?>" name="<?php echo $this->get_field_name( 'register' ); ?>" type="text" value="<?php echo esc_url( $settings['register'] ); ?>" /></label>
+		</p>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'lostpass' ); ?>"><?php _e( 'Lost Password URI:', 'bbpress' ); ?>
+			<input class="widefat" id="<?php echo $this->get_field_id( 'lostpass' ); ?>" name="<?php echo $this->get_field_name( 'lostpass' ); ?>" type="text" value="<?php echo esc_url( $settings['lostpass'] ); ?>" /></label>
+		</p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title'    => '',
+			'register' => '',
+			'lostpass' => ''
+		), 'login_widget_settings' );
 	}
 }
 
-// register the inactive_widgets area as sidebar
-register_sidebar(array(
-	'name' => __('Inactive Widgets'),
-	'id' => 'wp_inactive_widgets',
-	'class' => 'inactive-sidebar',
-	'description' => __( 'Drag widgets here to remove them from the sidebar but keep their settings.' ),
-	'before_widget' => '',
-	'after_widget' => '',
-	'before_title' => '',
-	'after_title' => '',
-));
+/**
+ * bbPress Views Widget
+ *
+ * Adds a widget which displays the view list
+ *
+ * @since bbPress (r3020)
+ *
+ * @uses WP_Widget
+ */
+class BBP_Views_Widget extends WP_Widget {
 
-retrieve_widgets();
+	/**
+	 * bbPress View Widget
+	 *
+	 * Registers the view widget
+	 *
+	 * @since bbPress (r3020)
+	 *
+	 * @uses apply_filters() Calls 'bbp_views_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_views_widget_options', array(
+			'classname'   => 'widget_display_views',
+			'description' => __( 'A list of registered optional topic views.', 'bbpress' )
+		) );
 
-// We're saving a widget without js
-if ( isset($_POST['savewidget']) || isset($_POST['removewidget']) ) {
-	$widget_id = $_POST['widget-id'];
-	check_admin_referer("save-delete-widget-$widget_id");
+		parent::__construct( false, __( '(bbPress) Topic Views List', 'bbpress' ), $widget_ops );
+	}
 
-	$number = isset($_POST['multi_number']) ? (int) $_POST['multi_number'] : '';
-	if ( $number ) {
-		foreach ( $_POST as $key => $val ) {
-			if ( is_array($val) && preg_match('/__i__|%i%/', key($val)) ) {
-				$_POST[$key] = array( $number => array_shift($val) );
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r3389)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Views_Widget' );
+	}
+
+	/**
+	 * Displays the output, the view list
+	 *
+	 * @since bbPress (r3020)
+	 *
+	 * @param mixed $args Arguments
+	 * @param array $instance Instance
+	 * @uses apply_filters() Calls 'bbp_view_widget_title' with the title
+	 * @uses bbp_get_views() To get the views
+	 * @uses bbp_view_url() To output the view url
+	 * @uses bbp_view_title() To output the view title
+	 */
+	public function widget( $args = array(), $instance = array() ) {
+
+		// Only output widget contents if views exist
+		if ( ! bbp_get_views() ) {
+			return;
+		}
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',          $settings['title'], $instance, $this->id_base );
+
+		// bbPress filter
+		$settings['title'] = apply_filters( 'bbp_view_widget_title', $settings['title'], $instance, $this->id_base );
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		} ?>
+
+		<ul>
+
+			<?php foreach ( array_keys( bbp_get_views() ) as $view ) : ?>
+
+				<li><a class="bbp-view-title" href="<?php bbp_view_url( $view ); ?>"><?php bbp_view_title( $view ); ?></a></li>
+
+			<?php endforeach; ?>
+
+		</ul>
+
+		<?php echo $args['after_widget'];
+	}
+
+	/**
+	 * Update the view widget options
+	 *
+	 * @since bbPress (r3020)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance = array(), $old_instance = array() ) {
+		$instance          = $old_instance;
+		$instance['title'] = strip_tags( $new_instance['title'] );
+
+		return $instance;
+	}
+
+	/**
+	 * Output the view widget options form
+	 *
+	 * @since bbPress (r3020)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Views_Widget::get_field_id() To output the field id
+	 * @uses BBP_Views_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $settings['title'] ); ?>" />
+			</label>
+		</p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title' => ''
+		), 'view_widget_settings' );
+	}
+}
+
+/**
+ * bbPress Search Widget
+ *
+ * Adds a widget which displays the forum search form
+ *
+ * @since bbPress (r4579)
+ *
+ * @uses WP_Widget
+ */
+class BBP_Search_Widget extends WP_Widget {
+
+	/**
+	 * bbPress Search Widget
+	 *
+	 * Registers the search widget
+	 *
+	 * @since bbPress (r4579)
+	 *
+	 * @uses apply_filters() Calls 'bbp_search_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_search_widget_options', array(
+			'classname'   => 'widget_display_search',
+			'description' => __( 'The bbPress forum search form.', 'bbpress' )
+		) );
+
+		parent::__construct( false, __( '(bbPress) Forum Search Form', 'bbpress' ), $widget_ops );
+	}
+
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r4579)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Search_Widget' );
+	}
+
+	/**
+	 * Displays the output, the search form
+	 *
+	 * @since bbPress (r4579)
+	 *
+	 * @uses apply_filters() Calls 'bbp_search_widget_title' with the title
+	 * @uses get_template_part() To get the search form
+	 */
+	public function widget( $args, $instance ) {
+
+		// Bail if search is disabled
+		if ( ! bbp_allow_search() )
+			return;
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',            $settings['title'], $instance, $this->id_base );
+
+		// bbPress filter
+		$settings['title'] = apply_filters( 'bbp_search_widget_title', $settings['title'], $instance, $this->id_base );
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		}
+
+		bbp_get_template_part( 'form', 'search' );
+
+		echo $args['after_widget'];
+	}
+
+	/**
+	 * Update the widget options
+	 *
+	 * @since bbPress (r4579)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance, $old_instance ) {
+		$instance          = $old_instance;
+		$instance['title'] = strip_tags( $new_instance['title'] );
+
+		return $instance;
+	}
+
+	/**
+	 * Output the search widget options form
+	 *
+	 * @since bbPress (r4579)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Search_Widget::get_field_id() To output the field id
+	 * @uses BBP_Search_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $settings['title'] ); ?>" />
+			</label>
+		</p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title' => __( 'Search Forums', 'bbpress' )
+		), 'search_widget_settings' );
+	}
+}
+
+/**
+ * bbPress Forum Widget
+ *
+ * Adds a widget which displays the forum list
+ *
+ * @since bbPress (r2653)
+ *
+ * @uses WP_Widget
+ */
+class BBP_Forums_Widget extends WP_Widget {
+
+	/**
+	 * bbPress Forum Widget
+	 *
+	 * Registers the forum widget
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @uses apply_filters() Calls 'bbp_forums_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_forums_widget_options', array(
+			'classname'   => 'widget_display_forums',
+			'description' => __( 'A list of forums with an option to set the parent.', 'bbpress' )
+		) );
+
+		parent::__construct( false, __( '(bbPress) Forums List', 'bbpress' ), $widget_ops );
+	}
+
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r3389)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Forums_Widget' );
+	}
+
+	/**
+	 * Displays the output, the forum list
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param mixed $args Arguments
+	 * @param array $instance Instance
+	 * @uses apply_filters() Calls 'bbp_forum_widget_title' with the title
+	 * @uses get_option() To get the forums per page option
+	 * @uses current_user_can() To check if the current user can read
+	 *                           private() To resety name
+	 * @uses bbp_has_forums() The main forum loop
+	 * @uses bbp_forums() To check whether there are more forums available
+	 *                     in the loop
+	 * @uses bbp_the_forum() Loads up the current forum in the loop
+	 * @uses bbp_forum_permalink() To display the forum permalink
+	 * @uses bbp_forum_title() To display the forum title
+	 */
+	public function widget( $args, $instance ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',           $settings['title'], $instance, $this->id_base );
+
+		// bbPress filter
+		$settings['title'] = apply_filters( 'bbp_forum_widget_title', $settings['title'], $instance, $this->id_base );
+
+		// Note: private and hidden forums will be excluded via the
+		// bbp_pre_get_posts_normalize_forum_visibility action and function.
+		$widget_query = new WP_Query( array(
+			'post_type'           => bbp_get_forum_post_type(),
+			'post_parent'         => $settings['parent_forum'],
+			'post_status'         => bbp_get_public_status_id(),
+			'posts_per_page'      => get_option( '_bbp_forums_per_page', 50 ),
+			'ignore_sticky_posts' => true,
+			'no_found_rows'       => true,
+			'orderby'             => 'menu_order title',
+			'order'               => 'ASC'
+		) );
+
+		// Bail if no posts
+		if ( ! $widget_query->have_posts() ) {
+			return;
+		}
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		} ?>
+
+		<ul>
+
+			<?php while ( $widget_query->have_posts() ) : $widget_query->the_post(); ?>
+
+				<li><a class="bbp-forum-title" href="<?php bbp_forum_permalink( $widget_query->post->ID ); ?>"><?php bbp_forum_title( $widget_query->post->ID ); ?></a></li>
+
+			<?php endwhile; ?>
+
+		</ul>
+
+		<?php echo $args['after_widget'];
+
+		// Reset the $post global
+		wp_reset_postdata();
+	}
+
+	/**
+	 * Update the forum widget options
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance, $old_instance ) {
+		$instance                 = $old_instance;
+		$instance['title']        = strip_tags( $new_instance['title'] );
+		$instance['parent_forum'] = sanitize_text_field( $new_instance['parent_forum'] );
+
+		// Force to any
+		if ( !empty( $instance['parent_forum'] ) && !is_numeric( $instance['parent_forum'] ) ) {
+			$instance['parent_forum'] = 'any';
+		}
+
+		return $instance;
+	}
+
+	/**
+	 * Output the forum widget options form
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Forums_Widget::get_field_id() To output the field id
+	 * @uses BBP_Forums_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $settings['title'] ); ?>" />
+			</label>
+		</p>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'parent_forum' ); ?>"><?php _e( 'Parent Forum ID:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'parent_forum' ); ?>" name="<?php echo $this->get_field_name( 'parent_forum' ); ?>" type="text" value="<?php echo esc_attr( $settings['parent_forum'] ); ?>" />
+			</label>
+
+			<br />
+
+			<small><?php _e( '"0" to show only root - "any" to show all', 'bbpress' ); ?></small>
+		</p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title'        => __( 'Forums', 'bbpress' ),
+			'parent_forum' => 0
+		), 'forum_widget_settings' );
+	}
+}
+
+/**
+ * bbPress Topic Widget
+ *
+ * Adds a widget which displays the topic list
+ *
+ * @since bbPress (r2653)
+ *
+ * @uses WP_Widget
+ */
+class BBP_Topics_Widget extends WP_Widget {
+
+	/**
+	 * bbPress Topic Widget
+	 *
+	 * Registers the topic widget
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @uses apply_filters() Calls 'bbp_topics_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_topics_widget_options', array(
+			'classname'   => 'widget_display_topics',
+			'description' => __( 'A list of recent topics, sorted by popularity or freshness.', 'bbpress' )
+		) );
+
+		parent::__construct( false, __( '(bbPress) Recent Topics', 'bbpress' ), $widget_ops );
+	}
+
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r3389)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Topics_Widget' );
+	}
+
+	/**
+	 * Displays the output, the topic list
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param mixed $args
+	 * @param array $instance
+	 * @uses apply_filters() Calls 'bbp_topic_widget_title' with the title
+	 * @uses bbp_topic_permalink() To display the topic permalink
+	 * @uses bbp_topic_title() To display the topic title
+	 * @uses bbp_get_topic_last_active_time() To get the topic last active
+	 *                                         time
+	 * @uses bbp_get_topic_id() To get the topic id
+	 */
+	public function widget( $args = array(), $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',           $settings['title'], $instance, $this->id_base );
+
+		// bbPress filter
+		$settings['title'] = apply_filters( 'bbp_topic_widget_title', $settings['title'], $instance, $this->id_base );
+
+		// How do we want to order our results?
+		switch ( $settings['order_by'] ) {
+
+			// Order by most recent replies
+			case 'freshness' :
+				$topics_query = array(
+					'post_type'           => bbp_get_topic_post_type(),
+					'post_parent'         => $settings['parent_forum'],
+					'posts_per_page'      => (int) $settings['max_shown'],
+					'post_status'         => array( bbp_get_public_status_id(), bbp_get_closed_status_id() ),
+					'ignore_sticky_posts' => true,
+					'no_found_rows'       => true,
+					'meta_key'            => '_bbp_last_active_time',
+					'orderby'             => 'meta_value',
+					'order'               => 'DESC',
+				);
 				break;
-			}
+
+			// Order by total number of replies
+			case 'popular' :
+				$topics_query = array(
+					'post_type'           => bbp_get_topic_post_type(),
+					'post_parent'         => $settings['parent_forum'],
+					'posts_per_page'      => (int) $settings['max_shown'],
+					'post_status'         => array( bbp_get_public_status_id(), bbp_get_closed_status_id() ),
+					'ignore_sticky_posts' => true,
+					'no_found_rows'       => true,
+					'meta_key'            => '_bbp_reply_count',
+					'orderby'             => 'meta_value',
+					'order'               => 'DESC'
+				);
+				break;
+
+			// Order by which topic was created most recently
+			case 'newness' :
+			default :
+				$topics_query = array(
+					'post_type'           => bbp_get_topic_post_type(),
+					'post_parent'         => $settings['parent_forum'],
+					'posts_per_page'      => (int) $settings['max_shown'],
+					'post_status'         => array( bbp_get_public_status_id(), bbp_get_closed_status_id() ),
+					'ignore_sticky_posts' => true,
+					'no_found_rows'       => true,
+					'order'               => 'DESC'
+				);
+				break;
 		}
-	}
 
-	$sidebar_id = $_POST['sidebar'];
-	$position = isset($_POST[$sidebar_id . '_position']) ? (int) $_POST[$sidebar_id . '_position'] - 1 : 0;
+		// Note: private and hidden forums will be excluded via the
+		// bbp_pre_get_posts_normalize_forum_visibility action and function.
+		$widget_query = new WP_Query( $topics_query );
 
-	$id_base = $_POST['id_base'];
-	$sidebar = isset($sidebars_widgets[$sidebar_id]) ? $sidebars_widgets[$sidebar_id] : array();
-
-	// Delete.
-	if ( isset($_POST['removewidget']) && $_POST['removewidget'] ) {
-
-		if ( !in_array($widget_id, $sidebar, true) ) {
-			wp_redirect( admin_url('widgets.php?error=0') );
-			exit;
+		// Bail if no topics are found
+		if ( ! $widget_query->have_posts() ) {
+			return;
 		}
 
-		$sidebar = array_diff( $sidebar, array($widget_id) );
-		$_POST = array('sidebar' => $sidebar_id, 'widget-' . $id_base => array(), 'the-widget-id' => $widget_id, 'delete_widget' => '1');
+		echo $args['before_widget'];
 
-		/**
-		 * Fires immediately after a widget has been marked for deletion.
-		 *
-		 * @since 4.4.0
-		 *
-		 * @param string $widget_id  ID of the widget marked for deletion.
-		 * @param string $sidebar_id ID of the sidebar the widget was deleted from.
-		 * @param string $id_base    ID base for the widget.
-		 */
-		do_action( 'delete_widget', $widget_id, $sidebar_id, $id_base );
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		} ?>
+
+		<ul>
+
+			<?php while ( $widget_query->have_posts() ) :
+
+				$widget_query->the_post();
+				$topic_id    = bbp_get_topic_id( $widget_query->post->ID );
+				$author_link = '';
+
+				// Maybe get the topic author
+				if ( ! empty( $settings['show_user'] ) ) :
+					$author_link = bbp_get_topic_author_link( array( 'post_id' => $topic_id, 'type' => 'both', 'size' => 14 ) );
+				endif; ?>
+
+				<li>
+					<a class="bbp-forum-title" href="<?php bbp_topic_permalink( $topic_id ); ?>"><?php bbp_topic_title( $topic_id ); ?></a>
+
+					<?php if ( ! empty( $author_link ) ) : ?>
+
+						<?php printf( _x( 'by %1$s', 'widgets', 'bbpress' ), '<span class="topic-author">' . $author_link . '</span>' ); ?>
+
+					<?php endif; ?>
+
+					<?php if ( ! empty( $settings['show_date'] ) ) : ?>
+
+						<div><?php bbp_topic_last_active_time( $topic_id ); ?></div>
+
+					<?php endif; ?>
+
+				</li>
+
+			<?php endwhile; ?>
+
+		</ul>
+
+		<?php echo $args['after_widget'];
+
+		// Reset the $post global
+		wp_reset_postdata();
 	}
 
-	$_POST['widget-id'] = $sidebar;
+	/**
+	 * Update the topic widget options
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance = array(), $old_instance = array() ) {
+		$instance                 = $old_instance;
+		$instance['title']        = strip_tags( $new_instance['title'] );
+		$instance['order_by']     = strip_tags( $new_instance['order_by'] );
+		$instance['parent_forum'] = sanitize_text_field( $new_instance['parent_forum'] );
+		$instance['max_shown']    = (int) $new_instance['max_shown'];
 
-	foreach ( (array) $wp_registered_widget_updates as $name => $control ) {
-		if ( $name != $id_base || !is_callable($control['callback']) )
-			continue;
+		// Date
+		$instance['show_date'] = isset( $new_instance['show_date'] )
+			? (bool) $new_instance['show_date']
+			: false;
 
-		ob_start();
-			call_user_func_array( $control['callback'], $control['params'] );
-		ob_end_clean();
+		// Author
+		$instance['show_user'] = isset( $new_instance['show_user'] )
+			? (bool) $new_instance['show_user']
+			: false;
 
-		break;
-	}
-
-	$sidebars_widgets[$sidebar_id] = $sidebar;
-
-	// Remove old position.
-	if ( !isset($_POST['delete_widget']) ) {
-		foreach ( $sidebars_widgets as $key => $sb ) {
-			if ( is_array($sb) )
-				$sidebars_widgets[$key] = array_diff( $sb, array($widget_id) );
+		// Force to any
+		if ( !empty( $instance['parent_forum'] ) && !is_numeric( $instance['parent_forum'] ) ) {
+			$instance['parent_forum'] = 'any';
 		}
-		array_splice( $sidebars_widgets[$sidebar_id], $position, 0, $widget_id );
+
+		return $instance;
 	}
 
-	wp_set_sidebars_widgets($sidebars_widgets);
-	wp_redirect( admin_url('widgets.php?message=0') );
-	exit;
+	/**
+	 * Output the topic widget options form
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Topics_Widget::get_field_id() To output the field id
+	 * @uses BBP_Topics_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p><label for="<?php echo $this->get_field_id( 'title'     ); ?>"><?php _e( 'Title:',                  'bbpress' ); ?> <input class="widefat" id="<?php echo $this->get_field_id( 'title'     ); ?>" name="<?php echo $this->get_field_name( 'title'     ); ?>" type="text" value="<?php echo esc_attr( $settings['title']     ); ?>" /></label></p>
+		<p><label for="<?php echo $this->get_field_id( 'max_shown' ); ?>"><?php _e( 'Maximum topics to show:', 'bbpress' ); ?> <input class="widefat" id="<?php echo $this->get_field_id( 'max_shown' ); ?>" name="<?php echo $this->get_field_name( 'max_shown' ); ?>" type="text" value="<?php echo esc_attr( $settings['max_shown'] ); ?>" /></label></p>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'parent_forum' ); ?>"><?php _e( 'Parent Forum ID:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'parent_forum' ); ?>" name="<?php echo $this->get_field_name( 'parent_forum' ); ?>" type="text" value="<?php echo esc_attr( $settings['parent_forum'] ); ?>" />
+			</label>
+
+			<br />
+
+			<small><?php _e( '"0" to show only root - "any" to show all', 'bbpress' ); ?></small>
+		</p>
+
+		<p><label for="<?php echo $this->get_field_id( 'show_date' ); ?>"><?php _e( 'Show post date:',    'bbpress' ); ?> <input type="checkbox" id="<?php echo $this->get_field_id( 'show_date' ); ?>" name="<?php echo $this->get_field_name( 'show_date' ); ?>" <?php checked( true, $settings['show_date'] ); ?> value="1" /></label></p>
+		<p><label for="<?php echo $this->get_field_id( 'show_user' ); ?>"><?php _e( 'Show topic author:', 'bbpress' ); ?> <input type="checkbox" id="<?php echo $this->get_field_id( 'show_user' ); ?>" name="<?php echo $this->get_field_name( 'show_user' ); ?>" <?php checked( true, $settings['show_user'] ); ?> value="1" /></label></p>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'order_by' ); ?>"><?php _e( 'Order By:',        'bbpress' ); ?></label>
+			<select name="<?php echo $this->get_field_name( 'order_by' ); ?>" id="<?php echo $this->get_field_name( 'order_by' ); ?>">
+				<option <?php selected( $settings['order_by'], 'newness' );   ?> value="newness"><?php _e( 'Newest Topics',                'bbpress' ); ?></option>
+				<option <?php selected( $settings['order_by'], 'popular' );   ?> value="popular"><?php _e( 'Popular Topics',               'bbpress' ); ?></option>
+				<option <?php selected( $settings['order_by'], 'freshness' ); ?> value="freshness"><?php _e( 'Topics With Recent Replies', 'bbpress' ); ?></option>
+			</select>
+		</p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget options into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title'        => __( 'Recent Topics', 'bbpress' ),
+			'max_shown'    => 5,
+			'show_date'    => false,
+			'show_user'    => false,
+			'parent_forum' => 'any',
+			'order_by'     => false
+		), 'topic_widget_settings' );
+	}
 }
 
-// Remove inactive widgets without js
-if ( isset( $_POST['removeinactivewidgets'] ) ) {
-	check_admin_referer( 'remove-inactive-widgets', '_wpnonce_remove_inactive_widgets' );
-
-	if ( $_POST['removeinactivewidgets'] ) {
-		foreach ( $sidebars_widgets['wp_inactive_widgets'] as $key => $widget_id ) {
-			$pieces = explode( '-', $widget_id );
-			$multi_number = array_pop( $pieces );
-			$id_base = implode( '-', $pieces );
-			$widget = get_option( 'widget_' . $id_base );
-			unset( $widget[$multi_number] );
-			update_option( 'widget_' . $id_base, $widget );
-			unset( $sidebars_widgets['wp_inactive_widgets'][$key] );
-		}
-
-		wp_set_sidebars_widgets( $sidebars_widgets );
-	}
-
-	wp_redirect( admin_url( 'widgets.php?message=0' ) );
-	exit;
-}
-
-// Output the widget form without js
-if ( isset($_GET['editwidget']) && $_GET['editwidget'] ) {
-	$widget_id = $_GET['editwidget'];
-
-	if ( isset($_GET['addnew']) ) {
-		// Default to the first sidebar
-		$keys = array_keys( $wp_registered_sidebars );
-		$sidebar = reset( $keys );
-
-		if ( isset($_GET['base']) && isset($_GET['num']) ) { // multi-widget
-			// Copy minimal info from an existing instance of this widget to a new instance
-			foreach ( $wp_registered_widget_controls as $control ) {
-				if ( $_GET['base'] === $control['id_base'] ) {
-					$control_callback = $control['callback'];
-					$multi_number = (int) $_GET['num'];
-					$control['params'][0]['number'] = -1;
-					$widget_id = $control['id'] = $control['id_base'] . '-' . $multi_number;
-					$wp_registered_widget_controls[$control['id']] = $control;
-					break;
-				}
-			}
-		}
-	}
-
-	if ( isset($wp_registered_widget_controls[$widget_id]) && !isset($control) ) {
-		$control = $wp_registered_widget_controls[$widget_id];
-		$control_callback = $control['callback'];
-	} elseif ( !isset($wp_registered_widget_controls[$widget_id]) && isset($wp_registered_widgets[$widget_id]) ) {
-		$name = esc_html( strip_tags($wp_registered_widgets[$widget_id]['name']) );
-	}
-
-	if ( !isset($name) )
-		$name = esc_html( strip_tags($control['name']) );
-
-	if ( !isset($sidebar) )
-		$sidebar = isset($_GET['sidebar']) ? $_GET['sidebar'] : 'wp_inactive_widgets';
-
-	if ( !isset($multi_number) )
-		$multi_number = isset($control['params'][0]['number']) ? $control['params'][0]['number'] : '';
-
-	$id_base = isset($control['id_base']) ? $control['id_base'] : $control['id'];
-
-	// Show the widget form.
-	$width = ' style="width:' . max($control['width'], 350) . 'px"';
-	$key = isset($_GET['key']) ? (int) $_GET['key'] : 0;
-
-	require_once( ABSPATH . 'wp-admin/admin-header.php' ); ?>
-	<div class="wrap">
-	<h1><?php echo esc_html( $title ); ?></h1>
-	<div class="editwidget"<?php echo $width; ?>>
-	<h2><?php printf( __( 'Widget %s' ), $name ); ?></h2>
-
-	<form action="widgets.php" method="post">
-	<div class="widget-inside">
-<?php
-	if ( is_callable( $control_callback ) )
-		call_user_func_array( $control_callback, $control['params'] );
-	else
-		echo '<p>' . __('There are no options for this widget.') . "</p>\n"; ?>
-	</div>
-
-	<p class="describe"><?php _e('Select both the sidebar for this widget and the position of the widget in that sidebar.'); ?></p>
-	<div class="widget-position">
-	<table class="widefat"><thead><tr><th><?php _e('Sidebar'); ?></th><th><?php _e('Position'); ?></th></tr></thead><tbody>
-<?php
-	foreach ( $wp_registered_sidebars as $sbname => $sbvalue ) {
-		echo "\t\t<tr><td><label><input type='radio' name='sidebar' value='" . esc_attr($sbname) . "'" . checked( $sbname, $sidebar, false ) . " /> $sbvalue[name]</label></td><td>";
-		if ( 'wp_inactive_widgets' == $sbname || 'orphaned_widgets' == substr( $sbname, 0, 16 ) ) {
-			echo '&nbsp;';
-		} else {
-			if ( !isset($sidebars_widgets[$sbname]) || !is_array($sidebars_widgets[$sbname]) ) {
-				$j = 1;
-				$sidebars_widgets[$sbname] = array();
-			} else {
-				$j = count($sidebars_widgets[$sbname]);
-				if ( isset($_GET['addnew']) || !in_array($widget_id, $sidebars_widgets[$sbname], true) )
-					$j++;
-			}
-			$selected = '';
-			echo "\t\t<select name='{$sbname}_position'>\n";
-			echo "\t\t<option value=''>" . __('&mdash; Select &mdash;') . "</option>\n";
-			for ( $i = 1; $i <= $j; $i++ ) {
-				if ( in_array($widget_id, $sidebars_widgets[$sbname], true) )
-					$selected = selected( $i, $key + 1, false );
-				echo "\t\t<option value='$i'$selected> $i </option>\n";
-			}
-			echo "\t\t</select>\n";
-		}
-		echo "</td></tr>\n";
-	} ?>
-	</tbody></table>
-	</div>
-
-	<div class="widget-control-actions">
-<?php
-	if ( isset($_GET['addnew']) ) { ?>
-	<a href="widgets.php" class="button alignleft"><?php _e('Cancel'); ?></a>
-<?php
-	} else {
-		submit_button( __( 'Delete' ), 'alignleft', 'removewidget', false );
-	}
-	submit_button( __( 'Save Widget' ), 'primary alignright', 'savewidget', false ); ?>
-	<input type="hidden" name="widget-id" class="widget-id" value="<?php echo esc_attr($widget_id); ?>" />
-	<input type="hidden" name="id_base" class="id_base" value="<?php echo esc_attr($id_base); ?>" />
-	<input type="hidden" name="multi_number" class="multi_number" value="<?php echo esc_attr($multi_number); ?>" />
-<?php	wp_nonce_field("save-delete-widget-$widget_id"); ?>
-	<br class="clear" />
-	</div>
-	</form>
-	</div>
-	</div>
-<?php
-	require_once( ABSPATH . 'wp-admin/admin-footer.php' );
-	exit;
-}
-
-$messages = array(
-	__('Changes saved.')
-);
-
-$errors = array(
-	__('Error while saving.'),
-	__('Error in displaying the widget settings form.')
-);
-
-require_once( ABSPATH . 'wp-admin/admin-header.php' ); ?>
-
-<div class="wrap">
-<h1 class="wp-heading-inline"><?php
-echo esc_html( $title );
-?></h1>
-
-<?php
-if ( current_user_can( 'customize' ) ) {
-	printf(
-		' <a class="page-title-action hide-if-no-customize" href="%1$s">%2$s</a>',
-		esc_url( add_query_arg(
-			array(
-				array( 'autofocus' => array( 'panel' => 'widgets' ) ),
-				'return' => urlencode( remove_query_arg( wp_removable_query_args(), wp_unslash( $_SERVER['REQUEST_URI'] ) ) )
-			),
-			admin_url( 'customize.php' )
-		) ),
-		__( 'Manage with Live Preview' )
-	);
-}
-?>
-
-<hr class="wp-header-end">
-
-<?php if ( isset($_GET['message']) && isset($messages[$_GET['message']]) ) { ?>
-<div id="message" class="updated notice is-dismissible"><p><?php echo $messages[$_GET['message']]; ?></p></div>
-<?php } ?>
-<?php if ( isset($_GET['error']) && isset($errors[$_GET['error']]) ) { ?>
-<div id="message" class="error"><p><?php echo $errors[$_GET['error']]; ?></p></div>
-<?php } ?>
-
-<?php
 /**
- * Fires before the Widgets administration page content loads.
+ * bbPress Stats Widget
  *
- * @since 3.0.0
+ * Adds a widget which displays the forum statistics
+ *
+ * @since bbPress (r4509)
+ *
+ * @uses WP_Widget
  */
-do_action( 'widgets_admin_page' ); ?>
+class BBP_Stats_Widget extends WP_Widget {
 
-<div class="widget-liquid-left">
-<div id="widgets-left">
-	<div id="available-widgets" class="widgets-holder-wrap">
-		<div class="sidebar-name">
-			<button type="button" class="handlediv hide-if-no-js" aria-expanded="true">
-				<span class="screen-reader-text"><?php _e( 'Available Widgets' ); ?></span>
-				<span class="toggle-indicator" aria-hidden="true"></span>
-			</button>
-			<h2><?php _e( 'Available Widgets' ); ?> <span id="removing-widget"><?php _ex( 'Deactivate', 'removing-widget' ); ?> <span></span></span></h2>
-		</div>
-		<div class="widget-holder">
-			<div class="sidebar-description">
-				<p class="description"><?php _e('To activate a widget drag it to a sidebar or click on it. To deactivate a widget and delete its settings, drag it back.'); ?></p>
-			</div>
-			<div id="widget-list">
-				<?php wp_list_widgets(); ?>
-			</div>
-			<br class='clear' />
-		</div>
-		<br class="clear" />
-	</div>
+	/**
+	 * bbPress Stats Widget
+	 *
+	 * Registers the stats widget
+	 *
+	 * @since bbPress (r4509)
+	 *
+	 * @uses  apply_filters() Calls 'bbp_stats_widget_options' with the
+	 *        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_stats_widget_options', array(
+			'classname'   => 'widget_display_stats',
+			'description' => __( 'Some statistics from your forum.', 'bbpress' )
+		) );
 
-<?php
-
-$theme_sidebars = array();
-foreach ( $wp_registered_sidebars as $sidebar => $registered_sidebar ) {
-	if ( false !== strpos( $registered_sidebar['class'], 'inactive-sidebar' ) || 'orphaned_widgets' == substr( $sidebar, 0, 16 ) ) {
-		$wrap_class = 'widgets-holder-wrap';
-		if ( !empty( $registered_sidebar['class'] ) )
-			$wrap_class .= ' ' . $registered_sidebar['class'];
-
-		$is_inactive_widgets = 'wp_inactive_widgets' == $registered_sidebar['id'];
-		?>
-		<div class="<?php echo esc_attr( $wrap_class ); ?>">
-			<div class="widget-holder inactive">
-				<?php wp_list_widget_controls( $registered_sidebar['id'], $registered_sidebar['name'] ); ?>
-
-				<?php if ( $is_inactive_widgets ) { ?>
-				<div class="remove-inactive-widgets">
-					<form action="" method="post">
-						<p>
-							<?php
-							$attributes = array( 'id' => 'inactive-widgets-control-remove' );
-
-							if ( empty($sidebars_widgets['wp_inactive_widgets']) ) {
-								$attributes['disabled'] = '';
-							}
-
-							submit_button( __( 'Clear Inactive Widgets' ), 'delete', 'removeinactivewidgets', false, $attributes );
-							?>
-							<span class="spinner"></span>
-						</p>
-						<?php wp_nonce_field( 'remove-inactive-widgets', '_wpnonce_remove_inactive_widgets' ); ?>
-					</form>
-				</div>
-				<?php } ?>
-			</div>
-			<?php if ( $is_inactive_widgets ) { ?>
-			<p class="description"><?php _e( 'This will clear all items from the inactive widgets list. You will not be able to restore any customizations.' ); ?></p>
-			<?php } ?>
-		</div>
-		<?php
-
-	} else {
-		$theme_sidebars[$sidebar] = $registered_sidebar;
-	}
-}
-
-?>
-</div>
-</div>
-<?php
-
-$i = $split = 0;
-$single_sidebar_class = '';
-$sidebars_count = count( $theme_sidebars );
-
-if ( $sidebars_count > 1 ) {
-	$split = ceil( $sidebars_count / 2 );
-} else {
-	$single_sidebar_class = ' single-sidebar';
-}
-
-?>
-<div class="widget-liquid-right">
-<div id="widgets-right" class="wp-clearfix<?php echo $single_sidebar_class; ?>">
-<div class="sidebars-column-1">
-<?php
-
-foreach ( $theme_sidebars as $sidebar => $registered_sidebar ) {
-	$wrap_class = 'widgets-holder-wrap';
-	if ( !empty( $registered_sidebar['class'] ) )
-		$wrap_class .= ' sidebar-' . $registered_sidebar['class'];
-
-	if ( $i > 0 )
-		$wrap_class .= ' closed';
-
-	if ( $split && $i == $split ) {
-		?>
-		</div><div class="sidebars-column-2">
-		<?php
+		parent::__construct( false, __( '(bbPress) Statistics', 'bbpress' ), $widget_ops );
 	}
 
-	?>
-	<div class="<?php echo esc_attr( $wrap_class ); ?>">
-		<?php wp_list_widget_controls( $sidebar, $registered_sidebar['name'] ); // Show the control forms for each of the widgets in this sidebar ?>
-	</div>
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r4509)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Stats_Widget' );
+	}
+
+	/**
+	 * Displays the output, the statistics
+	 *
+	 * @since bbPress (r4509)
+	 *
+	 * @param mixed $args     Arguments
+	 * @param array $instance Instance
+	 *
+	 * @uses apply_filters() Calls 'bbp_stats_widget_title' with the title
+	 * @uses bbp_get_template_part() To get the content-forum-statistics template
+	 */
+	public function widget( $args = array(), $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',           $settings['title'], $instance, $this->id_base );
+
+		// bbPress widget title filter
+		$settings['title'] = apply_filters( 'bbp_stats_widget_title', $settings['title'], $instance, $this->id_base );
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		}
+
+		bbp_get_template_part( 'content', 'statistics' );
+
+		echo $args['after_widget'];
+	}
+
+	/**
+	 * Update the stats widget options
+	 *
+	 * @since bbPress (r4509)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 *
+	 * @return array
+	 */
+	public function update( $new_instance, $old_instance ) {
+		$instance          = $old_instance;
+		$instance['title'] = strip_tags( $new_instance['title'] );
+
+		return $instance;
+	}
+
+	/**
+	 * Output the stats widget options form
+	 *
+	 * @since bbPress (r4509)
+	 *
+	 * @param $instance
+	 *
+	 * @return string|void
+	 */
+	public function form( $instance ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p>
+			<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'bbpress' ); ?>
+				<input class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" type="text" value="<?php echo esc_attr( $settings['title'] ); ?>"/>
+			</label>
+		</p>
+
 	<?php
+	}
 
-	$i++;
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title' => __( 'Forum Statistics', 'bbpress' )
+		),
+		'stats_widget_settings' );
+	}
 }
 
-?>
-</div>
-</div>
-</div>
-<form method="post">
-<?php wp_nonce_field( 'save-sidebar-widgets', '_wpnonce_widgets', false ); ?>
-</form>
-<br class="clear" />
-</div>
-
-<div class="widgets-chooser">
-	<ul class="widgets-chooser-sidebars"></ul>
-	<div class="widgets-chooser-actions">
-		<button class="button widgets-chooser-cancel"><?php _e( 'Cancel' ); ?></button>
-		<button class="button button-primary widgets-chooser-add"><?php _e( 'Add Widget' ); ?></button>
-	</div>
-</div>
-
-<?php
-
 /**
- * Fires after the available widgets and sidebars have loaded, before the admin footer.
+ * bbPress Replies Widget
  *
- * @since 2.2.0
+ * Adds a widget which displays the replies list
+ *
+ * @since bbPress (r2653)
+ *
+ * @uses WP_Widget
  */
-do_action( 'sidebar_admin_page' );
-require_once( ABSPATH . 'wp-admin/admin-footer.php' );
+class BBP_Replies_Widget extends WP_Widget {
+
+	/**
+	 * bbPress Replies Widget
+	 *
+	 * Registers the replies widget
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @uses apply_filters() Calls 'bbp_replies_widget_options' with the
+	 *                        widget options
+	 */
+	public function __construct() {
+		$widget_ops = apply_filters( 'bbp_replies_widget_options', array(
+			'classname'   => 'widget_display_replies',
+			'description' => __( 'A list of the most recent replies.', 'bbpress' )
+		) );
+
+		parent::__construct( false, __( '(bbPress) Recent Replies', 'bbpress' ), $widget_ops );
+	}
+
+	/**
+	 * Register the widget
+	 *
+	 * @since bbPress (r3389)
+	 *
+	 * @uses register_widget()
+	 */
+	public static function register_widget() {
+		register_widget( 'BBP_Replies_Widget' );
+	}
+
+	/**
+	 * Displays the output, the replies list
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param mixed $args
+	 * @param array $instance
+	 * @uses apply_filters() Calls 'bbp_reply_widget_title' with the title
+	 * @uses bbp_get_reply_author_link() To get the reply author link
+	 * @uses bbp_get_reply_id() To get the reply id
+	 * @uses bbp_get_reply_url() To get the reply url
+	 * @uses bbp_get_reply_excerpt() To get the reply excerpt
+	 * @uses bbp_get_reply_topic_title() To get the reply topic title
+	 * @uses get_the_date() To get the date of the reply
+	 * @uses get_the_time() To get the time of the reply
+	 */
+	public function widget( $args, $instance ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance );
+
+		// Typical WordPress filter
+		$settings['title'] = apply_filters( 'widget_title',             $settings['title'], $instance, $this->id_base );
+
+		// bbPress filter
+		$settings['title'] = apply_filters( 'bbp_replies_widget_title', $settings['title'], $instance, $this->id_base );
+
+		// Note: private and hidden forums will be excluded via the
+		// bbp_pre_get_posts_normalize_forum_visibility action and function.
+		$widget_query = new WP_Query( array(
+			'post_type'           => bbp_get_reply_post_type(),
+			'post_status'         => array( bbp_get_public_status_id(), bbp_get_closed_status_id() ),
+			'posts_per_page'      => (int) $settings['max_shown'],
+			'ignore_sticky_posts' => true,
+			'no_found_rows'       => true,
+		) );
+
+		// Bail if no replies
+		if ( ! $widget_query->have_posts() ) {
+			return;
+		}
+
+		echo $args['before_widget'];
+
+		if ( !empty( $settings['title'] ) ) {
+			echo $args['before_title'] . $settings['title'] . $args['after_title'];
+		} ?>
+
+		<ul>
+
+			<?php while ( $widget_query->have_posts() ) : $widget_query->the_post(); ?>
+
+				<li>
+
+					<?php
+
+					// Verify the reply ID
+					$reply_id   = bbp_get_reply_id( $widget_query->post->ID );
+					$reply_link = '<a class="bbp-reply-topic-title" href="' . esc_url( bbp_get_reply_url( $reply_id ) ) . '" title="' . esc_attr( bbp_get_reply_excerpt( $reply_id, 50 ) ) . '">' . bbp_get_reply_topic_title( $reply_id ) . '</a>';
+
+					// Only query user if showing them
+					if ( ! empty( $settings['show_user'] ) ) :
+						$author_link = bbp_get_reply_author_link( array( 'post_id' => $reply_id, 'type' => 'both', 'size' => 14 ) );
+					else :
+						$author_link = false;
+					endif;
+
+					// Reply author, link, and timestamp
+					if ( ! empty( $settings['show_date'] ) && !empty( $author_link ) ) :
+
+						// translators: 1: reply author, 2: reply link, 3: reply timestamp
+						printf( _x( '%1$s on %2$s %3$s', 'widgets', 'bbpress' ), $author_link, $reply_link, '<div>' . bbp_get_time_since( get_the_time( 'U' ) ) . '</div>' );
+
+					// Reply link and timestamp
+					elseif ( ! empty( $settings['show_date'] ) ) :
+
+						// translators: 1: reply link, 2: reply timestamp
+						printf( _x( '%1$s %2$s',         'widgets', 'bbpress' ), $reply_link,  '<div>' . bbp_get_time_since( get_the_time( 'U' ) ) . '</div>'              );
+
+					// Reply author and title
+					elseif ( !empty( $author_link ) ) :
+
+						// translators: 1: reply author, 2: reply link
+						printf( _x( '%1$s on %2$s',      'widgets', 'bbpress' ), $author_link, $reply_link                                                                 );
+
+					// Only the reply title
+					else :
+
+						// translators: 1: reply link
+						printf( _x( '%1$s',              'widgets', 'bbpress' ), $reply_link                                                                               );
+
+					endif;
+
+					?>
+
+				</li>
+
+			<?php endwhile; ?>
+
+		</ul>
+
+		<?php echo $args['after_widget'];
+
+		// Reset the $post global
+		wp_reset_postdata();
+	}
+
+	/**
+	 * Update the reply widget options
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param array $new_instance The new instance options
+	 * @param array $old_instance The old instance options
+	 */
+	public function update( $new_instance = array(), $old_instance = array() ) {
+		$instance              = $old_instance;
+		$instance['title']     = strip_tags( $new_instance['title'] );
+		$instance['max_shown'] = (int) $new_instance['max_shown'];
+
+		// Date
+		$instance['show_date'] = isset( $new_instance['show_date'] )
+			? (bool) $new_instance['show_date']
+			: false;
+
+		// Author
+		$instance['show_user'] = isset( $new_instance['show_user'] )
+			? (bool) $new_instance['show_user']
+			: false;
+
+		return $instance;
+	}
+
+	/**
+	 * Output the reply widget options form
+	 *
+	 * @since bbPress (r2653)
+	 *
+	 * @param $instance Instance
+	 * @uses BBP_Replies_Widget::get_field_id() To output the field id
+	 * @uses BBP_Replies_Widget::get_field_name() To output the field name
+	 */
+	public function form( $instance = array() ) {
+
+		// Get widget settings
+		$settings = $this->parse_settings( $instance ); ?>
+
+		<p><label for="<?php echo $this->get_field_id( 'title'     ); ?>"><?php _e( 'Title:',                   'bbpress' ); ?> <input class="widefat" id="<?php echo $this->get_field_id( 'title'     ); ?>" name="<?php echo $this->get_field_name( 'title'     ); ?>" type="text" value="<?php echo esc_attr( $settings['title']     ); ?>" /></label></p>
+		<p><label for="<?php echo $this->get_field_id( 'max_shown' ); ?>"><?php _e( 'Maximum replies to show:', 'bbpress' ); ?> <input class="widefat" id="<?php echo $this->get_field_id( 'max_shown' ); ?>" name="<?php echo $this->get_field_name( 'max_shown' ); ?>" type="text" value="<?php echo esc_attr( $settings['max_shown'] ); ?>" /></label></p>
+		<p><label for="<?php echo $this->get_field_id( 'show_date' ); ?>"><?php _e( 'Show post date:',          'bbpress' ); ?> <input type="checkbox" id="<?php echo $this->get_field_id( 'show_date' ); ?>" name="<?php echo $this->get_field_name( 'show_date' ); ?>" <?php checked( true, $settings['show_date'] ); ?> value="1" /></label></p>
+		<p><label for="<?php echo $this->get_field_id( 'show_user' ); ?>"><?php _e( 'Show reply author:',       'bbpress' ); ?> <input type="checkbox" id="<?php echo $this->get_field_id( 'show_user' ); ?>" name="<?php echo $this->get_field_name( 'show_user' ); ?>" <?php checked( true, $settings['show_user'] ); ?> value="1" /></label></p>
+
+		<?php
+	}
+
+	/**
+	 * Merge the widget settings into defaults array.
+	 *
+	 * @since bbPress (r4802)
+	 *
+	 * @param $instance Instance
+	 * @uses bbp_parse_args() To merge widget settings into defaults
+	 */
+	public function parse_settings( $instance = array() ) {
+		return bbp_parse_args( $instance, array(
+			'title'     => __( 'Recent Replies', 'bbpress' ),
+			'max_shown' => 5,
+			'show_date' => false,
+			'show_user' => false
+		),
+		'replies_widget_settings' );
+	}
+}

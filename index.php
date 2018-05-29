@@ -1,2 +1,5 @@
 <?php
-# Silence is golden.
+
+/**
+ * Do not modify the files in this folder.
+ */
