@@ -1,0 +1,366 @@
+# Translation of Themes - MyWiki in French (France)
+# This file is distributed under the same license as the Themes - MyWiki package.
+msgid ""
+msgstr ""
+"PO-Revision-Date: 2017-11-30 11:53:37+0000\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: GlotPress/2.4.0-alpha\n"
+"Language: fr\n"
+"Project-Id-Version: Themes - MyWiki\n"
+
+#. Description of the plugin/theme
+msgid "MyWiki is simple, lightweight and faster WordPress Theme for individuals and companies to manage their Knowledgebase or Wiki or FAQs. It is a mobile responsive theme based on Twitter bootstrap framework. It's a translation ready theme and is available in English as well as Spanish languages."
+msgstr "MyWiki est un thème Wordpress simple, léger et rapide destiné aux particuliers et aux entreprises pour gérer leur base de connaissances ou leur Wiki ou leur FAQ. C'est un thème responsive basé sur le framework Twitter bootstrap. Le thème est prêt pour la traduction et est disponible en anglais et espagnol."
+
+#. Theme Name of the plugin/theme
+msgid "MyWiki"
+msgstr "MyWiki"
+
+#: footer.php:37
+msgid "Powered by %1$s."
+msgstr "Propulsé par %1$s."
+
+#. Template Name of the plugin/theme
+msgid "Wiki template"
+msgstr "Modèle de Wiki"
+
+#. Template Name of the plugin/theme
+msgid "Full Page"
+msgstr "Page entière"
+
+#: theme-options/fasterthemes.php:175
+msgid "Options saved successfully."
+msgstr "Les options on été enregistrées."
+
+#: theme-options/fasterthemes.php:170
+msgid "Save options"
+msgstr "Sauvegarder les options"
+
+#: theme-options/fasterthemes.php:167
+msgid "fasterthemes.com"
+msgstr "fasterthemes.com"
+
+#: theme-options/fasterthemes.php:149
+msgid "Linkedin profile or page URL i.e."
+msgstr "Profil Linkedin ou URL de la page. Ex :"
+
+#: theme-options/fasterthemes.php:146
+msgid "Linkedin"
+msgstr "Linkedin"
+
+#: theme-options/fasterthemes.php:140
+msgid "Google Plus profile or page URL i.e."
+msgstr "Profil Google Plus ou URL de la page. Ex :"
+
+#: theme-options/fasterthemes.php:137
+msgid "Google Plus"
+msgstr "Google Plus"
+
+#: theme-options/fasterthemes.php:131
+msgid "Twitter profile or page URL i.e."
+msgstr "Profil Twitter ou URL de la page. Ex :"
+
+#: theme-options/fasterthemes.php:128
+msgid "Twitter"
+msgstr "Twitter"
+
+#: theme-options/fasterthemes.php:122
+msgid "Facebook profile or page URL i.e."
+msgstr "Profil Facebook ou URL de la page. Ex :"
+
+#: theme-options/fasterthemes.php:119
+msgid "Facebook"
+msgstr "Facebook"
+
+#: theme-options/fasterthemes.php:110
+msgid "Some text regarding copyright of your site, you would like to display in the footer."
+msgstr "Some Text regarding copyright of your site, you would like to display in the footer."
+
+#: theme-options/fasterthemes.php:107 theme-options/fasterthemes.php:111
+msgid "Copyright Text"
+msgstr "Texte de Copyright"
+
+#: theme-options/fasterthemes.php:96
+msgid "Size of favicon should be exactly 32x32px for best results."
+msgstr "Pour un meilleur résultat, la taille du favicon doit être exactement de 32x32px."
+
+#: theme-options/fasterthemes.php:94
+msgid "Favicon"
+msgstr "Favicon"
+
+#: theme-options/fasterthemes.php:86 theme-options/fasterthemes.php:99
+msgid "Upload"
+msgstr "Télécharger"
+
+#: theme-options/fasterthemes.php:85 theme-options/fasterthemes.php:98
+msgid "No file chosen"
+msgstr "Aucun fichier choisi"
+
+#: theme-options/fasterthemes.php:83
+msgid "Size of logo should be exactly 117x43px for best results. Leave blank to use text heading."
+msgstr "Pour un meilleur résultat, la taille du logo doit être de 117x43px. Laissez vide pour utiliser le texte."
+
+#: theme-options/fasterthemes.php:81
+msgid "Site Logo"
+msgstr "Logo pour votre site"
+
+#: theme-options/fasterthemes.php:69
+msgid "PRO Theme Features"
+msgstr "Fonctionnalités PRO du thème"
+
+#: theme-options/fasterthemes.php:68
+msgid "Social Settings"
+msgstr "Social Settings"
+
+#: theme-options/fasterthemes.php:67
+msgid "Basic Settings"
+msgstr "Réglages de base"
+
+#: theme-options/fasterthemes.php:58
+msgid "Save Options"
+msgstr "Sauvegarder les options"
+
+#: theme-options/fasterthemes.php:31 theme-options/fasterthemes.php:56
+msgid "Theme Options"
+msgstr "Options du thème"
+
+#: theme-options/fasterthemes.php:30
+msgid "FasterThemes Options"
+msgstr "Options FasterThemes"
+
+#: template-wiki.php:11
+msgid "Article Categories"
+msgstr "Catégories d'article"
+
+#: tag.php:9
+msgid "Tag"
+msgstr "Mots-clés"
+
+#: search.php:8
+msgid "Search"
+msgstr "Rechercher"
+
+#: index.php:17
+msgid "Tags"
+msgstr "Tags"
+
+#: header.php:67
+msgid "Have a Question? Write here and press enter"
+msgstr "Vous avez une question? Écrivez-la ici et appuyer sur entrée"
+
+#: functions.php:501
+msgid "Read more"
+msgstr "Lire la suite"
+
+#: functions.php:501
+msgid "read more..."
+msgstr "Lire la suite..."
+
+#: functions.php:476
+msgid "Edit"
+msgstr "Modifier"
+
+#: functions.php:473
+msgid "%1$s at %2$s"
+msgstr "%1$s à %2$s"
+
+#: functions.php:468
+msgid "%s says:"
+msgstr "%s a dit:"
+
+#: functions.php:63
+msgid "Page %s"
+msgstr "Page %s"
+
+#: functions.php:403
+msgid "Error 404 "
+msgstr "erreur 404"
+
+#: functions.php:400
+msgid "Articles posted by "
+msgstr "Articles publiés par"
+
+#: functions.php:396
+msgid "Posts tagged "
+msgstr "Posts Tagged"
+
+#: functions.php:347
+msgid "Search results for "
+msgstr "Résultat de la Recherche pour "
+
+#: functions.php:345
+msgid "Archive by category "
+msgstr "Archive par catégorie"
+
+#: functions.php:332
+msgid "Home"
+msgstr "Accueil"
+
+#: functions.php:313
+msgid "Footer Content Area 3"
+msgstr "Zone de contenu du pied 3"
+
+#: functions.php:304
+msgid "Footer Content Area 2"
+msgstr "Zone de contenu du pied 2"
+
+#: functions.php:296 functions.php:305 functions.php:314
+msgid "Used on Footer."
+msgstr "Utilisé dans le pied :"
+
+#: functions.php:295
+msgid "Footer Content Area 1"
+msgstr "Zone de contenu du pied 1"
+
+#: functions.php:287
+msgid "Used on every page."
+msgstr "Utilisé sur chaque page."
+
+#: functions.php:286
+msgid "Main Sidebar"
+msgstr "Colonne principale"
+
+#: functions.php:243
+msgid "Recent Posts"
+msgstr "Articles récents"
+
+#: functions.php:237
+msgid "Displays most recent posts by post count"
+msgstr "Affichage des articles les plus récents par nombre d’article."
+
+#: functions.php:230
+msgid "Use 0 for no time limit."
+msgstr "Utilisez 0 pour aucune limite de temps."
+
+#: functions.php:227
+msgid "Posted in the past X days"
+msgstr "Publiés dans les X jours passés."
+
+#: functions.php:223 functions.php:278
+msgid "Number of Posts"
+msgstr "Nombre De Messages "
+
+#: functions.php:219 functions.php:274
+msgid "Title"
+msgstr "Titre"
+
+#: functions.php:173
+msgid "Popular Posts"
+msgstr "Articles populaires"
+
+#: functions.php:167
+msgid "Displays most popular posts by comment count"
+msgstr "Affichage des articles les plus populaires par nombre de commentaires."
+
+#: functions.php:155
+msgid "Category Widget Shows Category"
+msgstr "Le widget de catégorie affiche la catégorie."
+
+#: functions.php:151 functions.php:152
+msgid "Category Widget"
+msgstr "Widget de catégorie"
+
+#: functions.php:124
+msgid "Categories"
+msgstr "Catégories"
+
+#: functions.php:118
+msgid "Footer Links"
+msgstr "Liens du pied de page"
+
+#: functions.php:117
+msgid "The Main Menu"
+msgstr "Le menu principal"
+
+#: functions.php:85
+msgid "View all posts by %s"
+msgstr "Afficher tous les articles par %s"
+
+#: footer.php:22
+msgid "Follow Us :"
+msgstr "Suivez-nous :"
+
+#: comments.php:37
+msgid "Comment"
+msgstr "Commentaire"
+
+#: comments.php:33
+msgid "E-Mail"
+msgstr "E-mail"
+
+#: comments.php:29
+msgid "Your Name"
+msgstr "Votre nom"
+
+#: comments.php:25
+msgid "Submit Comment"
+msgstr "Soumettre le commentaire"
+
+#: comments.php:24
+msgid "LEAVE A COMMENT"
+msgstr "Laisser un commentaire"
+
+#: comments.php:16
+msgid "One thought on - %2$s"
+msgid_plural "%1$s thoughts on - %2$s"
+msgstr[0] "Un commentaire sur %2$s"
+msgstr[1] "%1$s commentaires sur %2$s"
+
+#: category.php:9
+msgid "Category"
+msgstr "Catégorie"
+
+#: author.php:9
+msgid "Author"
+msgstr "Auteur"
+
+#: attachment.php:30 index.php:36
+msgid "Sorry, but the requested resource was not found on this site."
+msgstr "Désolé, la ressource demandée n'a pas été trouvée sur ce site."
+
+#: attachment.php:27 index.php:31
+msgid "Not Found"
+msgstr "Introuvable"
+
+#: attachment.php:8
+msgid "filed under"
+msgstr "Archivé sous"
+
+#: attachment.php:8
+msgid "by"
+msgstr "de"
+
+#: attachment.php:8
+msgid "Posted"
+msgstr "Publié"
+
+#: archive.php:9
+msgid "Archives"
+msgstr "Archives"
+
+#: 404.php:12
+msgid "Whatever you were looking for was not found, but maybe try looking again or search using the form below."
+msgstr "Ce que vous cherchez n'a pas été trouvé. Essayez de trouver à nouveau ou effectuez une recherche avec le formulaire ci-dessous."
+
+#: 404.php:8
+msgid "This is embarassing. We can't find what you were looking for."
+msgstr "C'est embarrassant. Nous ne pouvons pas trouver ce que vous recherchez."
+
+#: 404.php:7
+msgid "Epic 404 - Article Not Found"
+msgstr "Erreur 404 - Article non trouvé."
+
+#. Author URI of the plugin/theme
+msgid "http://fasterthemes.com/"
+msgstr "http://fasterthemes.com/"
+
+#. Author of the plugin/theme
+msgid "FasterThemes"
+msgstr "FasterThemes"
+
+#. Theme URI of the plugin/theme
+msgid "http://fasterthemes.com/wordpress-themes/mywiki"
+msgstr "http://fasterthemes.com/wordpress-themes/mywiki"
