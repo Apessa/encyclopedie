@@ -1,22 +1,15 @@
-<?php
-// MyWiki theme
-get_header(); ?>
+<?php get_header() ?>
 <div id="content" class="clearfix">
   <div id="main" class="col-sm-8 clearfix" role="main">
     <?php if (have_posts()) : while (have_posts()) : the_post(); ?>
     <article id="post-<?php the_ID(); ?>" <?php post_class('clearfix'); ?> role="article" itemscope itemtype="http://schema.org/BlogPosting">
       <header>
-        <div class="page-header">
-          <h1 class="page-title" itemprop="headline">
+          <h1 class="page-title main-page-title" itemprop="headline">
             <?php the_title(); ?>
           </h1>
-        </div>
+          <?php if (function_exists('mywiki_custom_breadcrumbs')) mywiki_custom_breadcrumbs(); ?>
       </header>
       <!-- end article header -->
-      <footer>
-        <?php the_tags('<p class="tags"><span class="tags-title">' . __("Tags", "mywiki") . ':</span> ', ', ', '</p>'); ?>
-      </footer>
-      <!-- end article footer -->
       <section class="post_content clearfix" itemprop="articleBody">
         <?php the_content(); ?>
       </section>
@@ -24,24 +17,11 @@ get_header(); ?>
     </article>
     <!-- end article -->
     <?php endwhile; ?>
-    <?php else : ?>
-    <article id="post-not-found">
-      <header>
-        <h1>
-          <?php _e("Not Found", "mywiki"); ?>
-        </h1>
-      </header>
-      <section class="post_content">
-        <p>
-          <?php _e("Sorry, but the requested resource was not found on this site.", "mywiki"); ?>
-        </p>
-      </section>
-      <footer> </footer>
-    </article>
     <?php endif; ?>
+    <?php comments_template( '', true ); ?>
   </div>
   <!-- end #main -->
   <?php  get_sidebar(); // sidebar 1 ?>
 </div>
 <!-- end #content -->
-<?php get_footer(); ?>
+<?php get_footer();?>

@@ -1,1714 +1,503 @@
-<?php
-
-/**
- * bbPress User Functions
- *
- * @package bbPress
- * @subpackage Functions
- */
-
-// Exit if accessed directly
-if ( !defined( 'ABSPATH' ) ) exit;
-
-/**
- * Redirect back to $url when attempting to use the login page
- *
- * @since bbPress (r2815)
- *
- * @param string $url The url
- * @param string $raw_url Raw url
- * @param object $user User object
- * @uses is_wp_error() To check if the user param is a {@link WP_Error}
- * @uses admin_url() To get the admin url
- * @uses home_url() To get the home url
- * @uses esc_url() To escape the url
- * @uses wp_safe_redirect() To redirect
- */
-function bbp_redirect_login( $url = '', $raw_url = '', $user = '' ) {
-
-	// Raw redirect_to was passed, so use it
-	if ( !empty( $raw_url ) )
-		$url = $raw_url;
-
-	// $url was manually set in wp-login.php to redirect to admin
-	elseif ( admin_url() === $url )
-		$url = home_url();
-
-	// $url is empty
-	elseif ( empty( $url ) )
-		$url = home_url();
-
-	return apply_filters( 'bbp_redirect_login', $url, $raw_url, $user );
+<?php 
+add_action( 'wp_enqueue_scripts', 'mywiki_theme_setup' );
+function mywiki_theme_setup(){
+wp_enqueue_style( 'bootstrap', get_template_directory_uri() . '/css/bootstrap.min.css', array(), '3.0.1', 'all' );
+wp_enqueue_style('style', get_stylesheet_uri());
+wp_enqueue_script( 'bootstrap',  get_template_directory_uri() . '/js/bootstrap.min.js', array('jquery'), '3.0.1');
+wp_enqueue_script( 'ajaxsearch',  get_template_directory_uri() . '/js/ajaxsearch.js', array(), '1.0.0');
+wp_enqueue_script( 'general',  get_template_directory_uri() . '/js/general.js');
+wp_localize_script( 'general', 'my_ajax', array( 'ajaxurl' => admin_url( 'admin-ajax.php' ) ) );
+if ( is_singular() ) wp_enqueue_script( 'comment-reply' );
 }
-
-/**
- * Is an anonymous topic/reply being made?
- *
- * @since bbPress (r2688)
- *
- * @uses is_user_logged_in() Is the user logged in?
- * @uses bbp_allow_anonymous() Is anonymous posting allowed?
- * @uses apply_filters() Calls 'bbp_is_anonymous' with the return value
- * @return bool True if anonymous is allowed and user is not logged in, false if
- *               anonymous is not allowed or user is logged in
- */
-function bbp_is_anonymous() {
-	if ( !is_user_logged_in() && bbp_allow_anonymous() )
-		$is_anonymous = true;
-	else
-		$is_anonymous = false;
-
-	return apply_filters( 'bbp_is_anonymous', $is_anonymous );
-}
-
-/**
- * Echoes the values for current poster (uses WP comment cookies)
- *
- * @since bbPress (r2734)
- *
- * @param string $key Which value to echo?
- * @uses bbp_get_current_anonymous_user_data() To get the current anonymous user
- *                                              data
- */
-function bbp_current_anonymous_user_data( $key = '' ) {
-	echo bbp_get_current_anonymous_user_data( $key );
-}
-
-	/**
-	 * Get the cookies for current poster (uses WP comment cookies).
+/* mywiki theme starts */
+if ( ! function_exists( 'mywiki_setup' ) ) :
+function mywiki_setup() {
+	/* content width */
+	global $content_width;
+	if ( ! isset( $content_width ) ) {
+		$content_width = 900;
+	}
+	/*
+	 * Make mywiki theme available for translation.
 	 *
-	 * @since bbPress (r2734)
-	 *
-	 * @param string $key Optional. Which value to get? If not given, then
-	 *                     an array is returned.
-	 * @uses sanitize_comment_cookies() To sanitize the current poster data
-	 * @uses wp_get_current_commenter() To get the current poster data	 *
-	 * @return string|array Cookie(s) for current poster
 	 */
-	function bbp_get_current_anonymous_user_data( $key = '' ) {
-		$cookie_names = array(
-			'name'  => 'comment_author',
-			'email' => 'comment_author_email',
-			'url'   => 'comment_author_url',
-
-			// Here just for the sake of them, use the above ones
-			'comment_author'       => 'comment_author',
-			'comment_author_email' => 'comment_author_email',
-			'comment_author_url'   => 'comment_author_url',
-		);
-
-		sanitize_comment_cookies();
-
-		$bbp_current_poster = wp_get_current_commenter();
-
-		if ( !empty( $key ) && in_array( $key, array_keys( $cookie_names ) ) )
-			return $bbp_current_poster[$cookie_names[$key]];
-
-		return $bbp_current_poster;
-	}
-
-/**
- * Set the cookies for current poster (uses WP comment cookies)
- *
- * @since bbPress (r2734)
- *
- * @param array $anonymous_data With keys 'bbp_anonymous_name',
- *                               'bbp_anonymous_email', 'bbp_anonymous_website'.
- *                               Should be sanitized (see
- *                               {@link bbp_filter_anonymous_post_data()} for
- *                               sanitization)
- * @uses apply_filters() Calls 'comment_cookie_lifetime' for cookie lifetime.
- *                        Defaults to 30000000.
- */
-function bbp_set_current_anonymous_user_data( $anonymous_data = array() ) {
-	if ( empty( $anonymous_data ) || !is_array( $anonymous_data ) )
-		return;
-
-	$comment_cookie_lifetime = apply_filters( 'comment_cookie_lifetime', 30000000 );
-
-	setcookie( 'comment_author_'       . COOKIEHASH, $anonymous_data['bbp_anonymous_name'],    time() + $comment_cookie_lifetime, COOKIEPATH, COOKIE_DOMAIN );
-	setcookie( 'comment_author_email_' . COOKIEHASH, $anonymous_data['bbp_anonymous_email'],   time() + $comment_cookie_lifetime, COOKIEPATH, COOKIE_DOMAIN );
-	setcookie( 'comment_author_url_'   . COOKIEHASH, $anonymous_data['bbp_anonymous_website'], time() + $comment_cookie_lifetime, COOKIEPATH, COOKIE_DOMAIN );
-}
-
-/**
- * Get the poster IP address
- *
- * @since bbPress (r3120)
- *
- * @return string
- */
-function bbp_current_author_ip() {
-	$retval = preg_replace( '/[^0-9a-fA-F:., ]/', '', $_SERVER['REMOTE_ADDR'] );
-
-	return apply_filters( 'bbp_current_author_ip', $retval );
-}
-
-/**
- * Get the poster user agent
- *
- * @since bbPress (r3446)
- *
- * @return string
- */
-function bbp_current_author_ua() {
-	$retval = !empty( $_SERVER['HTTP_USER_AGENT'] ) ? substr( $_SERVER['HTTP_USER_AGENT'], 0, 254 ) : '';
-
-	return apply_filters( 'bbp_current_author_ua', $retval );
-}
-
-/** Post Counts ***************************************************************/
-
-/**
- * Return the raw database count of topics by a user
- *
- * @since bbPress (r3633)
- * @global WPDB $wpdb
- * @uses bbp_get_user_id()
- * @uses get_posts_by_author_sql()
- * @uses bbp_get_topic_post_type()
- * @uses apply_filters()
- * @return int Raw DB count of topics
- */
-function bbp_get_user_topic_count_raw( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	global $wpdb;
-
-	$where = get_posts_by_author_sql( bbp_get_topic_post_type(), true, $user_id );
-	$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} {$where}" );
-
-	return (int) apply_filters( 'bbp_get_user_topic_count_raw', $count, $user_id );
-}
-
-/**
- * Return the raw database count of replies by a user
- *
- * @since bbPress (r3633)
- * @global WPDB $wpdb
- * @uses bbp_get_user_id()
- * @uses get_posts_by_author_sql()
- * @uses bbp_get_reply_post_type()
- * @uses apply_filters()
- * @return int Raw DB count of replies
- */
-function bbp_get_user_reply_count_raw( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	global $wpdb;
-
-	$where = get_posts_by_author_sql( bbp_get_reply_post_type(), true, $user_id );
-	$count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} {$where}" );
-
-	return (int) apply_filters( 'bbp_get_user_reply_count_raw', $count, $user_id );
-}
-
-/** Favorites *****************************************************************/
-
-/**
- * Get the users who have made the topic favorite
- *
- * @since bbPress (r2658)
- *
- * @param int $topic_id Optional. Topic id
- * @uses wpdb::get_col() To execute our query and get the column back
- * @uses apply_filters() Calls 'bbp_get_topic_favoriters' with the users and
- *                        topic id
- * @return array|bool Results if the topic has any favoriters, otherwise false
- */
-function bbp_get_topic_favoriters( $topic_id = 0 ) {
-	$topic_id = bbp_get_topic_id( $topic_id );
-	if ( empty( $topic_id ) )
-		return;
-
-	global $wpdb;
-
-	$key   = $wpdb->prefix . '_bbp_favorites';
-	$users = wp_cache_get( 'bbp_get_topic_favoriters_' . $topic_id, 'bbpress_users' );
-	if ( false === $users ) {
-		$users = $wpdb->get_col( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = '{$key}' and FIND_IN_SET('{$topic_id}', meta_value) > 0" );
-		wp_cache_set( 'bbp_get_topic_favoriters_' . $topic_id, $users, 'bbpress_users' );
-	}
-
-	return apply_filters( 'bbp_get_topic_favoriters', $users );
-}
-
-/**
- * Get a user's favorite topics
- *
- * @since bbPress (r2652)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_favorites_topic_ids() To get the user's favorites
- * @uses bbp_has_topics() To get the topics
- * @uses apply_filters() Calls 'bbp_get_user_favorites' with the topic query and
- *                        user id
- * @return array|bool Results if user has favorites, otherwise false
- */
-function bbp_get_user_favorites( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	// If user has favorites, load them
-	$favorites = bbp_get_user_favorites_topic_ids( $user_id );
-	if ( !empty( $favorites ) ) {
-		$query = bbp_has_topics( array( 'post__in' => $favorites ) );
-	} else {
-		$query = false;
-	}
-
-	return apply_filters( 'bbp_get_user_favorites', $query, $user_id, $favorites );
-}
-
-/**
- * Get a user's favorite topics' ids
- *
- * @since bbPress (r2652)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_user_option() To get the user favorites
- * @uses apply_filters() Calls 'bbp_get_user_favorites_topic_ids' with
- *                        the favorites and user id
- * @return array|bool Results if user has favorites, otherwise false
- */
-function bbp_get_user_favorites_topic_ids( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	$favorites = get_user_option( '_bbp_favorites', $user_id );
-	$favorites = array_filter( wp_parse_id_list( $favorites ) );
-
-	return (array) apply_filters( 'bbp_get_user_favorites_topic_ids', $favorites, $user_id );
-}
-
-/**
- * Check if a topic is in user's favorites or not
- *
- * @since bbPress (r2652)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_get_user_favorites_topic_ids() To get the user favorites
- * @uses bbp_get_topic() To get the topic
- * @uses bbp_get_topic_id() To get the topic id
- * @uses apply_filters() Calls 'bbp_is_user_favorite' with the bool, user id,
- *                        topic id and favorites
- * @return bool True if the topic is in user's favorites, otherwise false
- */
-function bbp_is_user_favorite( $user_id = 0, $topic_id = 0 ) {
-
-	$user_id = bbp_get_user_id( $user_id, true, true );
-	if ( empty( $user_id ) )
-		return false;
-
-	$retval    = false;
-	$favorites = bbp_get_user_favorites_topic_ids( $user_id );
-
-	if ( !empty( $favorites ) ) {
-
-		// Checking a specific topic id
-		if ( !empty( $topic_id ) ) {
-			$topic    = bbp_get_topic( $topic_id );
-			$topic_id = !empty( $topic ) ? $topic->ID : 0;
-
-		// Using the global topic id
-		} elseif ( bbp_get_topic_id() ) {
-			$topic_id = bbp_get_topic_id();
-
-		// Use the current post id
-		} elseif ( !bbp_get_topic_id() ) {
-			$topic_id = get_the_ID();
-		}
-
-		// Is topic_id in the user's favorites
-		if ( !empty( $topic_id ) ) {
-			$retval = in_array( $topic_id, $favorites );
-		}
-	}
-
-	return (bool) apply_filters( 'bbp_is_user_favorite', (bool) $retval, $user_id, $topic_id, $favorites );
-}
-
-/**
- * Add a topic to user's favorites
- *
- * @since bbPress (r2652)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses bbp_get_user_favorites_topic_ids() To get the user favorites
- * @uses update_user_option() To update the user favorites
- * @uses do_action() Calls 'bbp_add_user_favorite' with the user id and topic id
- * @return bool Always true
- */
-function bbp_add_user_favorite( $user_id = 0, $topic_id = 0 ) {
-	if ( empty( $user_id ) || empty( $topic_id ) )
-		return false;
-
-	$topic = bbp_get_topic( $topic_id );
-	if ( empty( $topic ) )
-		return false;
-
-	$favorites = bbp_get_user_favorites_topic_ids( $user_id );
-	if ( !in_array( $topic_id, $favorites ) ) {
-		$favorites[] = $topic_id;
-		$favorites   = implode( ',', wp_parse_id_list( array_filter( $favorites ) ) );
-		update_user_option( $user_id, '_bbp_favorites', $favorites );
-	}
-
-	do_action( 'bbp_add_user_favorite', $user_id, $topic_id );
-
-	return true;
-}
-
-/**
- * Remove a topic from user's favorites
- *
- * @since bbPress (r2652)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses bbp_get_user_favorites_topic_ids() To get the user favorites
- * @uses update_user_option() To update the user favorites
- * @uses delete_user_option() To delete the user favorites meta
- * @uses do_action() Calls 'bbp_remove_user_favorite' with the user & topic id
- * @return bool True if the topic was removed from user's favorites, otherwise
- *               false
- */
-function bbp_remove_user_favorite( $user_id, $topic_id ) {
-	if ( empty( $user_id ) || empty( $topic_id ) )
-		return false;
-
-	$favorites = (array) bbp_get_user_favorites_topic_ids( $user_id );
-	if ( empty( $favorites ) )
-		return false;
-
-	$pos = array_search( $topic_id, $favorites );
-	if ( is_numeric( $pos ) ) {
-		array_splice( $favorites, $pos, 1 );
-		$favorites = array_filter( $favorites );
-
-		if ( !empty( $favorites ) ) {
-			$favorites = implode( ',', wp_parse_id_list( $favorites ) );
-			update_user_option( $user_id, '_bbp_favorites', $favorites );
-		} else {
-			delete_user_option( $user_id, '_bbp_favorites' );
-		}
-	}
-
-	do_action( 'bbp_remove_user_favorite', $user_id, $topic_id );
-
-	return true;
-}
-
-/**
- * Handles the front end adding and removing of favorite topics
- *
- * @param string $action The requested action to compare this function to
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_verify_nonce_request() To verify the nonce and check the request
- * @uses current_user_can() To check if the current user can edit the user
- * @uses bbPress:errors:add() To log the error messages
- * @uses bbp_is_user_favorite() To check if the topic is in user's favorites
- * @uses bbp_remove_user_favorite() To remove the user favorite
- * @uses bbp_add_user_favorite() To add the user favorite
- * @uses do_action() Calls 'bbp_favorites_handler' with success, user id, topic
- *                    id and action
- * @uses bbp_is_favorites() To check if it's the favorites page
- * @uses bbp_get_favorites_link() To get the favorites page link
- * @uses bbp_get_topic_permalink() To get the topic permalink
- * @uses wp_safe_redirect() To redirect to the url
- */
-function bbp_favorites_handler( $action = '' ) {
-
-	if ( !bbp_is_favorites_active() )
-		return false;
-
-	// Bail if no topic ID is passed
-	if ( empty( $_GET['topic_id'] ) )
-		return;
-
-	// Setup possible get actions
-	$possible_actions = array(
-		'bbp_favorite_add',
-		'bbp_favorite_remove',
-	);
-
-	// Bail if actions aren't meant for this function
-	if ( !in_array( $action, $possible_actions ) )
-		return;
-
-	// What action is taking place?
-	$topic_id    = intval( $_GET['topic_id'] );
-	$user_id     = bbp_get_user_id( 0, true, true );
-
-	// Check for empty topic
-	if ( empty( $topic_id ) ) {
-		bbp_add_error( 'bbp_favorite_topic_id', __( '<strong>ERROR</strong>: No topic was found! Which topic are you marking/unmarking as favorite?', 'bbpress' ) );
-
-	// Check nonce
-	} elseif ( ! bbp_verify_nonce_request( 'toggle-favorite_' . $topic_id ) ) {
-		bbp_add_error( 'bbp_favorite_nonce', __( '<strong>ERROR</strong>: Are you sure you wanted to do that?', 'bbpress' ) );
-
-	// Check current user's ability to edit the user
-	} elseif ( !current_user_can( 'edit_user', $user_id ) ) {
-		bbp_add_error( 'bbp_favorite_permissions', __( '<strong>ERROR</strong>: You don\'t have the permission to edit favorites of that user!', 'bbpress' ) );
-	}
-
-	// Bail if errors
-	if ( bbp_has_errors() )
-		return;
-
-	/** No errors *************************************************************/
-
-	$is_favorite = bbp_is_user_favorite( $user_id, $topic_id );
-	$success     = false;
-
-	if ( true === $is_favorite && 'bbp_favorite_remove' === $action )
-		$success = bbp_remove_user_favorite( $user_id, $topic_id );
-	elseif ( false === $is_favorite && 'bbp_favorite_add' === $action )
-		$success = bbp_add_user_favorite( $user_id, $topic_id );
-
-	// Do additional favorites actions
-	do_action( 'bbp_favorites_handler', $success, $user_id, $topic_id, $action );
-
-	// Success!
-	if ( true === $success ) {
-
-		// Redirect back from whence we came
-		if ( bbp_is_favorites() ) {
-			$redirect = bbp_get_favorites_permalink( $user_id );
-		} elseif ( bbp_is_single_user() ) {
-			$redirect = bbp_get_user_profile_url();
-		} elseif ( is_singular( bbp_get_topic_post_type() ) ) {
-			$redirect = bbp_get_topic_permalink( $topic_id );
-		} elseif ( is_single() || is_page() ) {
-			$redirect = get_permalink();
-		} else {
-			$redirect = get_permalink( $topic_id );
-		}
-
-		wp_safe_redirect( $redirect );
-
-		// For good measure
-		exit();
-
-	// Fail! Handle errors
-	} elseif ( true === $is_favorite && 'bbp_favorite_remove' === $action ) {
-		bbp_add_error( 'bbp_favorite_remove', __( '<strong>ERROR</strong>: There was a problem removing that topic from favorites!', 'bbpress' ) );
-	} elseif ( false === $is_favorite && 'bbp_favorite_add' === $action ) {
-		bbp_add_error( 'bbp_favorite_add',    __( '<strong>ERROR</strong>: There was a problem favoriting that topic!', 'bbpress' ) );
-	}
-}
-
-/** Subscriptions *************************************************************/
-
-/**
- * Get the users who have subscribed to the forum
- *
- * @since bbPress (r5156)
- *
- * @param int $forum_id Optional. forum id
- * @uses wpdb::get_col() To execute our query and get the column back
- * @uses apply_filters() Calls 'bbp_get_forum_subscribers' with the subscribers
- * @return array|bool Results if the forum has any subscribers, otherwise false
- */
-function bbp_get_forum_subscribers( $forum_id = 0 ) {
-	$forum_id = bbp_get_forum_id( $forum_id );
-	if ( empty( $forum_id ) )
-		return;
-
-	global $wpdb;
-
-	$key   = $wpdb->prefix . '_bbp_forum_subscriptions';
-	$users = wp_cache_get( 'bbp_get_forum_subscribers_' . $forum_id, 'bbpress_users' );
-	if ( false === $users ) {
-		$users = $wpdb->get_col( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = '{$key}' and FIND_IN_SET('{$forum_id}', meta_value) > 0" );
-		wp_cache_set( 'bbp_get_forum_subscribers_' . $forum_id, $users, 'bbpress_users' );
-	}
-
-	return apply_filters( 'bbp_get_forum_subscribers', $users );
-}
-
-/**
- * Get the users who have subscribed to the topic
- *
- * @since bbPress (r2668)
- *
- * @param int $topic_id Optional. Topic id
- * @uses wpdb::get_col() To execute our query and get the column back
- * @uses apply_filters() Calls 'bbp_get_topic_subscribers' with the subscribers
- * @return array|bool Results if the topic has any subscribers, otherwise false
- */
-function bbp_get_topic_subscribers( $topic_id = 0 ) {
-	$topic_id = bbp_get_topic_id( $topic_id );
-	if ( empty( $topic_id ) )
-		return;
-
-	global $wpdb;
-
-	$key   = $wpdb->prefix . '_bbp_subscriptions';
-	$users = wp_cache_get( 'bbp_get_topic_subscribers_' . $topic_id, 'bbpress_users' );
-	if ( false === $users ) {
-		$users = $wpdb->get_col( "SELECT user_id FROM {$wpdb->usermeta} WHERE meta_key = '{$key}' and FIND_IN_SET('{$topic_id}', meta_value) > 0" );
-		wp_cache_set( 'bbp_get_topic_subscribers_' . $topic_id, $users, 'bbpress_users' );
-	}
-
-	return apply_filters( 'bbp_get_topic_subscribers', $users );
-}
-
-/**
- * Get a user's subscribed topics
- *
- * @since bbPress (r2668)
- *
- * @deprecated since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_topic_subscriptions() To get the user's subscriptions
- * @return array|bool Results if user has subscriptions, otherwise false
- */
-function bbp_get_user_subscriptions( $user_id = 0 ) {
-	_deprecated_function( __FUNCTION__, 2.5, 'bbp_get_user_topic_subscriptions()' );
-	$query = bbp_get_user_topic_subscriptions( $user_id );
-	return apply_filters( 'bbp_get_user_subscriptions', $query, $user_id );
-}
-
-/**
- * Get a user's subscribed topics
- *
- * @since bbPress (r2668)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's subscriptions
- * @uses bbp_has_topics() To get the topics
- * @uses apply_filters() Calls 'bbp_get_user_subscriptions' with the topic query
- *                        and user id
- * @return array|bool Results if user has subscriptions, otherwise false
- */
-function bbp_get_user_topic_subscriptions( $user_id = 0 ) {
-
-	// Default to the displayed user
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) ) {
-		return false;
-	}
-
-	// If user has subscriptions, load them
-	$subscriptions = bbp_get_user_subscribed_topic_ids( $user_id );
-	if ( !empty( $subscriptions ) ) {
-		$query = bbp_has_topics( array( 'post__in' => $subscriptions ) );
-	} else {
-		$query = false;
-	}
-
-	return apply_filters( 'bbp_get_user_topic_subscriptions', $query, $user_id );
-}
-
-/**
- * Get a user's subscribed forums
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's subscriptions
- * @uses bbp_has_forums() To get the forums
- * @uses apply_filters() Calls 'bbp_get_user_forum_subscriptions' with the forum
- *                        query and user id
- * @return array|bool Results if user has subscriptions, otherwise false
- */
-function bbp_get_user_forum_subscriptions( $user_id = 0 ) {
-
-	// Default to the displayed user
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) ) {
-		return false;
-	}
-
-	// If user has subscriptions, load them
-	$subscriptions = bbp_get_user_subscribed_forum_ids( $user_id );
-	if ( !empty( $subscriptions ) ) {
-		$query = bbp_has_forums( array( 'post__in' => $subscriptions ) );
-	} else {
-		$query = false;
-	}
-
-	return apply_filters( 'bbp_get_user_forum_subscriptions', $query, $user_id );
-}
-
-/**
- * Get a user's subscribed forum ids
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_user_option() To get the user's subscriptions
- * @uses apply_filters() Calls 'bbp_get_user_subscribed_forum_ids' with
- *                        the subscriptions and user id
- * @return array|bool Results if user has subscriptions, otherwise false
- */
-function bbp_get_user_subscribed_forum_ids( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	$subscriptions = get_user_option( '_bbp_forum_subscriptions', $user_id );
-	$subscriptions = array_filter( wp_parse_id_list( $subscriptions ) );
-
-	return (array) apply_filters( 'bbp_get_user_subscribed_forum_ids', $subscriptions, $user_id );
-}
-
-/**
- * Get a user's subscribed topics' ids
- *
- * @since bbPress (r2668)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_user_option() To get the user's subscriptions
- * @uses apply_filters() Calls 'bbp_get_user_subscribed_topic_ids' with
- *                        the subscriptions and user id
- * @return array|bool Results if user has subscriptions, otherwise false
- */
-function bbp_get_user_subscribed_topic_ids( $user_id = 0 ) {
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	$subscriptions = get_user_option( '_bbp_subscriptions', $user_id );
-	$subscriptions = array_filter( wp_parse_id_list( $subscriptions ) );
-
-	return (array) apply_filters( 'bbp_get_user_subscribed_topic_ids', $subscriptions, $user_id );
-}
-
-/**
- * Check if a topic or forum is in user's subscription list or not
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $forum_id Optional. Topic id
- * @uses get_post() To get the post object
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's forum subscriptions
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's topic subscriptions
- * @uses bbp_get_forum_post_type() To get the forum post type
- * @uses bbp_get_topic_post_type() To get the topic post type
- * @uses apply_filters() Calls 'bbp_is_user_subscribed' with the bool, user id,
- *                        forum/topic id and subsriptions
- * @return bool True if the forum or topic is in user's subscriptions, otherwise false
- */
-function bbp_is_user_subscribed( $user_id = 0, $object_id = 0 ) {
-
-	// Assume user is not subscribed
-	$retval = false;
-
-	// Setup ID's array
-	$subscribed_ids = array();
-
-	// User and object ID's are passed
-	if ( ! empty( $user_id ) && ! empty( $object_id ) ) {
-
-		// Get the post type
-		$post_type = get_post_type( $object_id );
-
-		// Post exists, so check the types
-		if ( ! empty( $post_type ) ) {
-
-			switch( $post_type ) {
-
-				// Forum
-				case bbp_get_forum_post_type() :
-					$subscribed_ids = bbp_get_user_subscribed_forum_ids( $user_id );
-					$retval         = bbp_is_user_subscribed_to_forum( $user_id, $object_id, $subscribed_ids );
-					break;
-
-				// Topic (default)
-				case bbp_get_topic_post_type() :
-				default :
-					$subscribed_ids = bbp_get_user_subscribed_topic_ids( $user_id );
-					$retval         = bbp_is_user_subscribed_to_topic( $user_id, $object_id, $subscribed_ids );
-					break;
-			}
-		}
-	}
-
-	return (bool) apply_filters( 'bbp_is_user_subscribed', $retval, $user_id, $object_id, $subscribed_ids );
-}
-
-/**
- * Check if a forum is in user's subscription list or not
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $forum_id Optional. Topic id
- * @param array $subscribed_ids Optional. Array of forum ID's to check
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's subscriptions
- * @uses bbp_get_forum() To get the forum
- * @uses bbp_get_forum_id() To get the forum id
- * @uses apply_filters() Calls 'bbp_is_user_subscribed' with the bool, user id,
- *                        forum id and subsriptions
- * @return bool True if the forum is in user's subscriptions, otherwise false
- */
-function bbp_is_user_subscribed_to_forum( $user_id = 0, $forum_id = 0, $subscribed_ids = array() ) {
-
-	// Assume user is not subscribed
-	$retval = false;
-
-	// Validate user
-	$user_id = bbp_get_user_id( $user_id, true, true );
-	if ( ! empty( $user_id ) ) {
-
-		// Get subscription ID's if none passed
-		if ( empty( $subscribed_ids ) ) {
-			$subscribed_ids = bbp_get_user_subscribed_forum_ids( $user_id );
-		}
-
-		// User has forum subscriptions
-		if ( ! empty( $subscribed_ids ) ) {
-
-			// Checking a specific forum id
-			if ( ! empty( $forum_id ) ) {
-				$forum    = bbp_get_forum( $forum_id );
-				$forum_id = ! empty( $forum ) ? $forum->ID : 0;
-
-			// Using the global forum id
-			} elseif ( bbp_get_forum_id() ) {
-				$forum_id = bbp_get_forum_id();
-
-			// Use the current post id
-			} elseif ( ! bbp_get_forum_id() ) {
-				$forum_id = get_the_ID();
-			}
-
-			// Is forum_id in the user's favorites
-			if ( ! empty( $forum_id ) ) {
-				$retval = in_array( $forum_id, $subscribed_ids );
-			}
-		}
-	}
-
-	return (bool) apply_filters( 'bbp_is_user_subscribed_to_forum', (bool) $retval, $user_id, $forum_id, $subscribed_ids );
-}
-
-/**
- * Check if a topic is in user's subscription list or not
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @param array $subscribed_ids Optional. Array of topic ID's to check
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's subscriptions
- * @uses bbp_get_topic() To get the topic
- * @uses bbp_get_topic_id() To get the topic id
- * @uses apply_filters() Calls 'bbp_is_user_subscribed' with the bool, user id,
- *                        topic id and subsriptions
- * @return bool True if the topic is in user's subscriptions, otherwise false
- */
-function bbp_is_user_subscribed_to_topic( $user_id = 0, $topic_id = 0, $subscribed_ids = array() ) {
-
-	// Assume user is not subscribed
-	$retval = false;
-
-	// Validate user
-	$user_id = bbp_get_user_id( $user_id, true, true );
-	if ( !empty( $user_id ) ) {
-
-		// Get subscription ID's if none passed
-		if ( empty( $subscribed_ids ) ) {
-			$subscribed_ids = bbp_get_user_subscribed_topic_ids( $user_id );
-		}
-
-		// User has topic subscriptions
-		if ( ! empty( $subscribed_ids ) ) {
-
-			// Checking a specific topic id
-			if ( ! empty( $topic_id ) ) {
-				$topic    = bbp_get_topic( $topic_id );
-				$topic_id = ! empty( $topic ) ? $topic->ID : 0;
-
-			// Using the global topic id
-			} elseif ( bbp_get_topic_id() ) {
-				$topic_id = bbp_get_topic_id();
-
-			// Use the current post id
-			} elseif ( !bbp_get_topic_id() ) {
-				$topic_id = get_the_ID();
-			}
-
-			// Is topic_id in the user's favorites
-			if ( ! empty( $topic_id ) ) {
-				$retval = in_array( $topic_id, $subscribed_ids );
-			}
-		}
-	}
-
-	return (bool) apply_filters( 'bbp_is_user_subscribed_to_topic', (bool) $retval, $user_id, $topic_id, $subscribed_ids );
-}
-
-/**
- * Add a topic to user's subscriptions
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses get_post() To get the post object
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's forum subscriptions
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's topic subscriptions
- * @uses bbp_get_forum_post_type() To get the forum post type
- * @uses bbp_get_topic_post_type() To get the topic post type
- * @uses update_user_option() To update the user's subscriptions
- * @uses do_action() Calls 'bbp_add_user_subscription' with the user & topic id
- * @return bool Always true
- */
-function bbp_add_user_subscription( $user_id = 0, $object_id = 0 ) {
-	if ( empty( $user_id ) || empty( $object_id ) ) {
-		return false;
-	}
-
-	// Get the post type
-	$post_type = get_post_type( $object_id );
-	if ( empty( $post_type ) ) {
-		return false;
-	}
-
-	switch( $post_type ) {
-
-		// Forum
-		case bbp_get_forum_post_type() :
-			bbp_add_user_forum_subscription( $user_id, $object_id );
-			break;
-
-		// Topic
-		case bbp_get_topic_post_type() :
-		default :
-			bbp_add_user_topic_subscription( $user_id, $object_id );
-			break;
-	}
-
-	do_action( 'bbp_add_user_subscription', $user_id, $object_id, $post_type );
-
-	return true;
-}
-
-/**
- * Add a forum to user's subscriptions
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $forum_id Optional. forum id
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's subscriptions
- * @uses bbp_get_forum() To get the forum
- * @uses update_user_option() To update the user's subscriptions
- * @uses do_action() Calls 'bbp_add_user_subscription' with the user & forum id
- * @return bool Always true
- */
-function bbp_add_user_forum_subscription( $user_id = 0, $forum_id = 0 ) {
-	if ( empty( $user_id ) || empty( $forum_id ) ) {
-		return false;
-	}
-
-	$forum = bbp_get_forum( $forum_id );
-	if ( empty( $forum ) ) {
-		return false;
-	}
-
-	$subscriptions = (array) bbp_get_user_subscribed_forum_ids( $user_id );
-	if ( !in_array( $forum_id, $subscriptions ) ) {
-		$subscriptions[] = $forum_id;
-		$subscriptions   = implode( ',', wp_parse_id_list( array_filter( $subscriptions ) ) );
-		update_user_option( $user_id, '_bbp_forum_subscriptions', $subscriptions );
-
-		wp_cache_delete( 'bbp_get_forum_subscribers_' . $forum_id, 'bbpress_users' );
-	}
-
-	do_action( 'bbp_add_user_forum_subscription', $user_id, $forum_id );
-
-	return true;
-}
-
-/**
- * Add a topic to user's subscriptions
- *
- * @since bbPress (r2668)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's subscriptions
- * @uses bbp_get_topic() To get the topic
- * @uses update_user_option() To update the user's subscriptions
- * @uses do_action() Calls 'bbp_add_user_subscription' with the user & topic id
- * @return bool Always true
- */
-function bbp_add_user_topic_subscription( $user_id = 0, $topic_id = 0 ) {
-	if ( empty( $user_id ) || empty( $topic_id ) ) {
-		return false;
-	}
-
-	$topic = bbp_get_topic( $topic_id );
-	if ( empty( $topic ) ) {
-		return false;
-	}
-
-	$subscriptions = (array) bbp_get_user_subscribed_topic_ids( $user_id );
-	if ( !in_array( $topic_id, $subscriptions ) ) {
-		$subscriptions[] = $topic_id;
-		$subscriptions   = implode( ',', wp_parse_id_list( array_filter( $subscriptions ) ) );
-		update_user_option( $user_id, '_bbp_subscriptions', $subscriptions );
-
-		wp_cache_delete( 'bbp_get_topic_subscribers_' . $topic_id, 'bbpress_users' );
-	}
-
-	do_action( 'bbp_add_user_topic_subscription', $user_id, $topic_id );
-
-	return true;
-}
-
-/**
- * Remove a topic from user's subscriptions
- *
- * @since bbPress (r2668)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses get_post() To get the post object
- * @uses bbp_get_forum_post_type() To get the forum post type
- * @uses bbp_get_topic_post_type() To get the topic post type
- * @uses bbp_remove_user_forum_subscription() To remove the user's subscription
- * @uses bbp_remove_user_topic_subscription() To remove the user's subscription
- * @uses do_action() Calls 'bbp_remove_user_subscription' with the user id and
- *                    topic id
- * @return bool True if the topic was removed from user's subscriptions,
- *               otherwise false
- */
-function bbp_remove_user_subscription( $user_id = 0, $object_id = 0 ) {
-	if ( empty( $user_id ) || empty( $object_id ) ) {
-		return false;
-	}
-
-	$post_type = get_post_type( $object_id );
-	if ( empty( $post_type ) ) {
-		return false;
-	}
-
-	switch( $post_type ) {
-
-		// Forum
-		case bbp_get_forum_post_type() :
-			bbp_remove_user_forum_subscription( $user_id, $object_id );
-			break;
-
-		// Topic
-		case bbp_get_topic_post_type() :
-		default :
-			bbp_remove_user_topic_subscription( $user_id, $object_id );
-			break;
-	}
-
-	do_action( 'bbp_remove_user_subscription', $user_id, $object_id, $post_type );
-
-	return true;
-}
-
-/**
- * Remove a forum from user's subscriptions
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $forum_id Optional. forum id
- * @uses bbp_get_user_subscribed_forum_ids() To get the user's subscriptions
- * @uses update_user_option() To update the user's subscriptions
- * @uses delete_user_option() To delete the user's subscriptions meta
- * @uses do_action() Calls 'bbp_remove_user_subscription' with the user id and
- *                    forum id
- * @return bool True if the forum was removed from user's subscriptions,
- *               otherwise false
- */
-function bbp_remove_user_forum_subscription( $user_id, $forum_id ) {
-	if ( empty( $user_id ) || empty( $forum_id ) ) {
-		return false;
-	}
-
-	$subscriptions = (array) bbp_get_user_subscribed_forum_ids( $user_id );
-	if ( empty( $subscriptions ) ) {
-		return false;
-	}
-
-	$pos = array_search( $forum_id, $subscriptions );
-	if ( false === $pos ) {
-		return false;
-	}
-
-	array_splice( $subscriptions, $pos, 1 );
-	$subscriptions = array_filter( $subscriptions );
-
-	if ( !empty( $subscriptions ) ) {
-		$subscriptions = implode( ',', wp_parse_id_list( $subscriptions ) );
-		update_user_option( $user_id, '_bbp_forum_subscriptions', $subscriptions );
-	} else {
-		delete_user_option( $user_id, '_bbp_forum_subscriptions' );
-	}
-
-	wp_cache_delete( 'bbp_get_forum_subscribers_' . $forum_id, 'bbpress_users' );
-
-	do_action( 'bbp_remove_user_forum_subscription', $user_id, $forum_id );
-
-	return true;
-}
-
-/**
- * Remove a topic from user's subscriptions
- *
- * @since bbPress (r5156)
- *
- * @param int $user_id Optional. User id
- * @param int $topic_id Optional. Topic id
- * @uses bbp_get_user_subscribed_topic_ids() To get the user's subscriptions
- * @uses update_user_option() To update the user's subscriptions
- * @uses delete_user_option() To delete the user's subscriptions meta
- * @uses do_action() Calls 'bbp_remove_user_topic_subscription' with the user id and
- *                    topic id
- * @return bool True if the topic was removed from user's subscriptions,
- *               otherwise false
- */
-function bbp_remove_user_topic_subscription( $user_id, $topic_id ) {
-	if ( empty( $user_id ) || empty( $topic_id ) ) {
-		return false;
-	}
-
-	$subscriptions = (array) bbp_get_user_subscribed_topic_ids( $user_id );
-	if ( empty( $subscriptions ) ) {
-		return false;
-	}
-
-	$pos = array_search( $topic_id, $subscriptions );
-	if ( false === $pos ) {
-		return false;
-	}
-
-	array_splice( $subscriptions, $pos, 1 );
-	$subscriptions = array_filter( $subscriptions );
-
-	if ( !empty( $subscriptions ) ) {
-		$subscriptions = implode( ',', wp_parse_id_list( $subscriptions ) );
-		update_user_option( $user_id, '_bbp_subscriptions', $subscriptions );
-	} else {
-		delete_user_option( $user_id, '_bbp_subscriptions' );
-	}
-
-	wp_cache_delete( 'bbp_get_topic_subscribers_' . $topic_id, 'bbpress_users' );
-
-	do_action( 'bbp_remove_user_topic_subscription', $user_id, $topic_id );
-
-	return true;
-}
-
-/**
- * Handles the front end subscribing and unsubscribing forums
- *
- * @since bbPress (r5156)
- *
- * @param string $action The requested action to compare this function to
- * @uses bbp_is_subscriptions_active() To check if the subscriptions are active
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_verify_nonce_request() To verify the nonce and check the request
- * @uses current_user_can() To check if the current user can edit the user
- * @uses bbPress:errors:add() To log the error messages
- * @uses bbp_is_user_subscribed() To check if the forum is in user's
- *                                 subscriptions
- * @uses bbp_remove_user_subscription() To remove the user subscription
- * @uses bbp_add_user_subscription() To add the user subscription
- * @uses do_action() Calls 'bbp_subscriptions_handler' with success, user id,
- *                    forum id and action
- * @uses bbp_is_subscription() To check if it's the subscription page
- * @uses bbp_get_forum_permalink() To get the forum permalink
- * @uses wp_safe_redirect() To redirect to the url
- */
-function bbp_forum_subscriptions_handler( $action = '' ) {
-
-	if ( ! bbp_is_subscriptions_active() ) {
-		return false;
-	}
-
-	// Bail if no forum ID is passed
-	if ( empty( $_GET['forum_id'] ) ) {
-		return;
-	}
-
-	// Setup possible get actions
-	$possible_actions = array(
-		'bbp_subscribe',
-		'bbp_unsubscribe',
-	);
-
-	// Bail if actions aren't meant for this function
-	if ( ! in_array( $action, $possible_actions ) ) {
-		return;
-	}
-
-	// Get required data
-	$user_id  = bbp_get_user_id( 0, true, true );
-	$forum_id = intval( $_GET['forum_id'] );
-
-	// Check for empty forum
-	if ( empty( $forum_id ) ) {
-		bbp_add_error( 'bbp_subscription_forum_id', __( '<strong>ERROR</strong>: No forum was found! Which forum are you subscribing/unsubscribing to?', 'bbpress' ) );
-
-	// Check nonce
-	} elseif ( ! bbp_verify_nonce_request( 'toggle-subscription_' . $forum_id ) ) {
-		bbp_add_error( 'bbp_subscription_forum_id', __( '<strong>ERROR</strong>: Are you sure you wanted to do that?', 'bbpress' ) );
-
-	// Check current user's ability to edit the user
-	} elseif ( !current_user_can( 'edit_user', $user_id ) ) {
-		bbp_add_error( 'bbp_subscription_permissions', __( '<strong>ERROR</strong>: You don\'t have the permission to edit favorites of that user!', 'bbpress' ) );
-	}
-
-	// Bail if we have errors
-	if ( bbp_has_errors() ) {
-		return;
-	}
-
-	/** No errors *************************************************************/
-
-	$is_subscription = bbp_is_user_subscribed( $user_id, $forum_id );
-	$success         = false;
-
-	if ( true === $is_subscription && 'bbp_unsubscribe' === $action ) {
-		$success = bbp_remove_user_subscription( $user_id, $forum_id );
-	} elseif ( false === $is_subscription && 'bbp_subscribe' === $action ) {
-		$success = bbp_add_user_subscription( $user_id, $forum_id );
-	}
-
-	// Do additional subscriptions actions
-	do_action( 'bbp_subscriptions_handler', $success, $user_id, $forum_id, $action );
-
-	// Success!
-	if ( true === $success ) {
-
-		// Redirect back from whence we came
-		if ( bbp_is_subscriptions() ) {
-			$redirect = bbp_get_subscriptions_permalink( $user_id );
-		} elseif ( bbp_is_single_user() ) {
-			$redirect = bbp_get_user_profile_url();
-		} elseif ( is_singular( bbp_get_forum_post_type() ) ) {
-			$redirect = bbp_get_forum_permalink( $forum_id );
-		} elseif ( is_single() || is_page() ) {
-			$redirect = get_permalink();
-		} else {
-			$redirect = get_permalink( $forum_id );
-		}
-
-		wp_safe_redirect( $redirect );
-
-		// For good measure
-		exit();
-
-	// Fail! Handle errors
-	} elseif ( true === $is_subscription && 'bbp_unsubscribe' === $action ) {
-		bbp_add_error( 'bbp_unsubscribe', __( '<strong>ERROR</strong>: There was a problem unsubscribing from that forum!', 'bbpress' ) );
-	} elseif ( false === $is_subscription && 'bbp_subscribe' === $action ) {
-		bbp_add_error( 'bbp_subscribe',    __( '<strong>ERROR</strong>: There was a problem subscribing to that forum!', 'bbpress' ) );
-	}
-}
-
-/**
- * Handles the front end subscribing and unsubscribing topics
- *
- * @param string $action The requested action to compare this function to
- * @uses bbp_is_subscriptions_active() To check if the subscriptions are active
- * @uses bbp_get_user_id() To get the user id
- * @uses bbp_verify_nonce_request() To verify the nonce and check the request
- * @uses current_user_can() To check if the current user can edit the user
- * @uses bbPress:errors:add() To log the error messages
- * @uses bbp_is_user_subscribed() To check if the topic is in user's
- *                                 subscriptions
- * @uses bbp_remove_user_subscription() To remove the user subscription
- * @uses bbp_add_user_subscription() To add the user subscription
- * @uses do_action() Calls 'bbp_subscriptions_handler' with success, user id,
- *                    topic id and action
- * @uses bbp_is_subscription() To check if it's the subscription page
- * @uses bbp_get_topic_permalink() To get the topic permalink
- * @uses wp_safe_redirect() To redirect to the url
- */
-function bbp_subscriptions_handler( $action = '' ) {
-
-	if ( !bbp_is_subscriptions_active() ) {
-		return false;
-	}
-
-	// Bail if no topic ID is passed
-	if ( empty( $_GET['topic_id'] ) ) {
-		return;
-	}
-
-	// Setup possible get actions
-	$possible_actions = array(
-		'bbp_subscribe',
-		'bbp_unsubscribe',
-	);
-
-	// Bail if actions aren't meant for this function
-	if ( !in_array( $action, $possible_actions ) ) {
-		return;
-	}
-
-	// Get required data
-	$user_id  = bbp_get_user_id( 0, true, true );
-	$topic_id = intval( $_GET['topic_id'] );
-
-	// Check for empty topic
-	if ( empty( $topic_id ) ) {
-		bbp_add_error( 'bbp_subscription_topic_id', __( '<strong>ERROR</strong>: No topic was found! Which topic are you subscribing/unsubscribing to?', 'bbpress' ) );
-
-	// Check nonce
-	} elseif ( ! bbp_verify_nonce_request( 'toggle-subscription_' . $topic_id ) ) {
-		bbp_add_error( 'bbp_subscription_topic_id', __( '<strong>ERROR</strong>: Are you sure you wanted to do that?', 'bbpress' ) );
-
-	// Check current user's ability to edit the user
-	} elseif ( !current_user_can( 'edit_user', $user_id ) ) {
-		bbp_add_error( 'bbp_subscription_permissions', __( '<strong>ERROR</strong>: You don\'t have the permission to edit favorites of that user!', 'bbpress' ) );
-	}
-
-	// Bail if we have errors
-	if ( bbp_has_errors() ) {
-		return;
-	}
-
-	/** No errors *************************************************************/
-
-	$is_subscription = bbp_is_user_subscribed( $user_id, $topic_id );
-	$success         = false;
-
-	if ( true === $is_subscription && 'bbp_unsubscribe' === $action ) {
-		$success = bbp_remove_user_subscription( $user_id, $topic_id );
-	} elseif ( false === $is_subscription && 'bbp_subscribe' === $action ) {
-		$success = bbp_add_user_subscription( $user_id, $topic_id );
-	}
-
-	// Do additional subscriptions actions
-	do_action( 'bbp_subscriptions_handler', $success, $user_id, $topic_id, $action );
-
-	// Success!
-	if ( true === $success ) {
-
-		// Redirect back from whence we came
-		if ( bbp_is_subscriptions() ) {
-			$redirect = bbp_get_subscriptions_permalink( $user_id );
-		} elseif ( bbp_is_single_user() ) {
-			$redirect = bbp_get_user_profile_url();
-		} elseif ( is_singular( bbp_get_topic_post_type() ) ) {
-			$redirect = bbp_get_topic_permalink( $topic_id );
-		} elseif ( is_single() || is_page() ) {
-			$redirect = get_permalink();
-		} else {
-			$redirect = get_permalink( $topic_id );
-		}
-
-		wp_safe_redirect( $redirect );
-
-		// For good measure
-		exit();
-
-	// Fail! Handle errors
-	} elseif ( true === $is_subscription && 'bbp_unsubscribe' === $action ) {
-		bbp_add_error( 'bbp_unsubscribe', __( '<strong>ERROR</strong>: There was a problem unsubscribing from that topic!', 'bbpress' ) );
-	} elseif ( false === $is_subscription && 'bbp_subscribe' === $action ) {
-		bbp_add_error( 'bbp_subscribe',    __( '<strong>ERROR</strong>: There was a problem subscribing to that topic!', 'bbpress' ) );
-	}
-}
-
-/** Edit **********************************************************************/
-
-/**
- * Handles the front end user editing
- *
- * @param string $action The requested action to compare this function to
- * @uses is_multisite() To check if it's a multisite
- * @uses bbp_is_user_home() To check if the user is at home (the display page
- *                           is the one of the logged in user)
- * @uses get_option() To get the displayed user's new email id option
- * @uses wpdb::prepare() To sanitize our sql query
- * @uses wpdb::get_var() To execute our query and get back the variable
- * @uses wpdb::query() To execute our query
- * @uses wp_update_user() To update the user
- * @uses delete_option() To delete the displayed user's email id option
- * @uses bbp_get_user_profile_edit_url() To get the edit profile url
- * @uses wp_safe_redirect() To redirect to the url
- * @uses bbp_verify_nonce_request() To verify the nonce and check the request
- * @uses current_user_can() To check if the current user can edit the user
- * @uses do_action() Calls 'personal_options_update' or
- *                   'edit_user_options_update' (based on if it's the user home)
- *                   with the displayed user id
- * @uses edit_user() To edit the user based on the post data
- * @uses get_userdata() To get the user data
- * @uses is_email() To check if the string is an email id or not
- * @uses wpdb::get_blog_prefix() To get the blog prefix
- * @uses is_network_admin() To check if the user is the network admin
- * @uses revoke_super_admin() To revoke super admin priviledges
- * @uses grant_super_admin() To grant super admin priviledges
- * @uses is_wp_error() To check if the value retrieved is a {@link WP_Error}
- */
-function bbp_edit_user_handler( $action = '' ) {
-
-	// Bail if action is not 'bbp-update-user'
-	if ( 'bbp-update-user' !== $action )
-		return;
-
-	// Get the displayed user ID
-	$user_id = bbp_get_displayed_user_id();
-
-	// Execute confirmed email change. See send_confirmation_on_profile_email().
-	if ( is_multisite() && bbp_is_user_home_edit() && isset( $_GET['newuseremail'] ) ) {
-
-		$new_email = get_option( $user_id . '_new_email' );
-
-		if ( hash_equals( $new_email['hash'], $_GET['newuseremail'] ) ) {
-			$user             = new WP_User();
-			$user->ID         = $user_id;
-			$user->user_email = esc_html( trim( $new_email['newemail'] ) );
-
-			global $wpdb;
-
-			if ( $wpdb->get_var( $wpdb->prepare( "SELECT user_login FROM {$wpdb->signups} WHERE user_login = %s", bbp_get_displayed_user_field( 'user_login', 'raw' ) ) ) ) {
-				$wpdb->query( $wpdb->prepare( "UPDATE {$wpdb->signups} SET user_email = %s WHERE user_login = %s", $user->user_email, bbp_get_displayed_user_field( 'user_login', 'raw' ) ) );
-			}
-
-			wp_update_user( get_object_vars( $user ) );
-			delete_option( $user_id . '_new_email' );
-
-			wp_safe_redirect( add_query_arg( array( 'updated' => 'true' ), bbp_get_user_profile_edit_url( $user_id ) ) );
-			exit();
-		}
-
-	// Delete new email address from user options
-	} elseif ( is_multisite() && bbp_is_user_home_edit() && !empty( $_GET['dismiss'] ) && ( $user_id . '_new_email' === $_GET['dismiss'] ) ) {
-		delete_option( $user_id . '_new_email' );
-		wp_safe_redirect( add_query_arg( array( 'updated' => 'true' ), bbp_get_user_profile_edit_url( $user_id ) ) );
-		exit();
-	}
-
-	// Nonce check
-	if ( ! bbp_verify_nonce_request( 'update-user_' . $user_id ) ) {
-		bbp_add_error( 'bbp_update_user_nonce', __( '<strong>ERROR</strong>: Are you sure you wanted to do that?', 'bbpress' ) );
-		return;
-	}
-
-	// Cap check
-	if ( ! current_user_can( 'edit_user', $user_id ) ) {
-		bbp_add_error( 'bbp_update_user_capability', __( '<strong>ERROR</strong>: Are you sure you wanted to do that?', 'bbpress' ) );
-		return;
-	}
-
-	// Do action based on who's profile you're editing
-	$edit_action = bbp_is_user_home_edit() ? 'personal_options_update' : 'edit_user_profile_update';
-	do_action( $edit_action, $user_id );
-
-	// Prevent edit_user() from wiping out the user's Toolbar on front setting
-	if ( !isset( $_POST['admin_bar_front'] ) && _get_admin_bar_pref( 'front', $user_id ) ) {
-		$_POST['admin_bar_front'] = 1;
-	}
-
-	// Handle user edit
-	$edit_user = edit_user( $user_id );
-
-	// Error(s) editng the user, so copy them into the global
-	if ( is_wp_error( $edit_user ) ) {
-		bbpress()->errors = $edit_user;
-
-	// Successful edit to redirect
-	} elseif ( is_integer( $edit_user ) ) {
-
-		// Maybe update super admin ability
-		if ( is_multisite() && ! bbp_is_user_home_edit() && current_user_can( 'manage_network_options' ) && is_super_admin() ) {
-			empty( $_POST['super_admin'] ) ? revoke_super_admin( $edit_user ) : grant_super_admin( $edit_user );
-		}
-
-		$redirect = add_query_arg( array( 'updated' => 'true' ), bbp_get_user_profile_edit_url( $edit_user ) );
-
-		wp_safe_redirect( $redirect );
-		exit;
-	}
-}
-
-/**
- * Conditionally hook the core WordPress output actions to the end of the
- * default user's edit profile template.
- *
- * This allows clever plugin authors to conditionally unhook the WordPress core
- * output actions if they don't want any unexpected junk to appear there, and
- * also avoids needing to pollute the templates with additional logic and actions.
- *
- * @since bbPress (r4273)
- *
- * @uses bbp_is_user_home_edit() To switch the action fired
- * @uses get_userdata() To get the current user's data
- * @uses bbp_get_displayed_user_id() To get the currently displayed user ID
- */
-function bbp_user_edit_after() {
-	$action = bbp_is_user_home_edit() ? 'show_user_profile' : 'edit_user_profile';
-
-	do_action( $action, get_userdata( bbp_get_displayed_user_id() ) );
-}
-
-/** User Queries **************************************************************/
-
-/**
- * Get the topics that a user created
- *
- * @since bbPress (r2660)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_id() To get the topic id
- * @uses bbp_has_topics() To get the topics created by the user
- * @return array|bool Results if the user has created topics, otherwise false
- */
-function bbp_get_user_topics_started( $user_id = 0 ) {
-
-	// Validate user
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	// Try to get the topics
-	$query = bbp_has_topics( array(
-		'author' => $user_id
+	load_theme_textdomain( 'mywiki', get_template_directory() . '/languages' );
+	// This theme styles the visual editor to resemble the theme style.
+	add_editor_style( 'css/editor-style.css' );
+	// Add RSS feed links to <head> for posts and comments.
+	add_theme_support( 'automatic-feed-links' );
+  add_theme_support( 'title-tag' );
+	/*
+	 * Enable support for Post Formats.
+	 */
+	// This theme allows users to set a custom background.
+	add_theme_support( 'custom-background', apply_filters( 'mywiki_custom_background_args', array(
+		'default-color' => '048eb0',
+	) ) );
+	// Add support for featured content.
+	add_theme_support( 'featured-content', array(
+		'featured_content_filter' => 'mywiki_get_featured_posts',
+		'max_posts' => 6,
 	) );
-
-	return apply_filters( 'bbp_get_user_topics_started', $query, $user_id );
+	// This theme uses its own gallery styles.
+	add_filter( 'use_default_gallery_style', '__return_false' );
 }
+endif; // mywiki_setup
+// Implement Custom Header features.
+require get_template_directory() . '/function/custom-header.php';
 
+add_action( 'after_setup_theme', 'mywiki_setup' );
+/*Title*/
+function mywiki_wp_title( $title, $sep ) {
+  global $paged, $page;
+  if ( is_feed() ) { return $title; } // end if
+  // Add the site name.
+  $title .= get_bloginfo( 'name' );
+  // Add the site description for the home/front page.
+  $site_description = get_bloginfo( 'description', 'display' );
+  if ( $site_description && ( is_home() || is_front_page() ) ) {
+    $title = "$title $sep $site_description";
+  } // end if
+  // Add a page number if necessary.
+  if ( $paged >= 2 || $page >= 2 ) {
+    $title = sprintf( __( 'Page %s', 'mywiki' ), max( $paged, $page ) ) . " $sep $title";
+  } // end if
+  return $title;
+} // end mywiki_wp_title
+add_filter( 'wp_title', 'mywiki_wp_title', 10, 2 );
+if ( ! function_exists( 'mywiki_entry_meta' ) ) :
 /**
- * Get the replies that a user created
+ * Set up post entry meta.
  *
- * @since bbPress (r4225)
- *
- * @param int $user_id Optional. User id
- * @uses bbp_get_user_id() To get the topic id
- * @uses bbp_has_replies() To get the topics created by the user
- * @return array|bool Results if the user has created topics, otherwise false
- */
-function bbp_get_user_replies_created( $user_id = 0 ) {
-
-	// Validate user
-	$user_id = bbp_get_user_id( $user_id );
-	if ( empty( $user_id ) )
-		return false;
-
-	// Try to get the topics
-	$query = bbp_has_replies( array(
-		'post_type' => bbp_get_reply_post_type(),
-		'order'     => 'DESC',
-		'author'    => $user_id
-	) );
-
-	return apply_filters( 'bbp_get_user_replies_created', $query, $user_id );
+ * Meta information for current post: categories, tags, permalink, author, and date.
+ **/
+function mywiki_entry_meta() {
+	$mywiki_category_list = get_the_category_list(', ');
+	$mywiki_tag_list = get_the_tag_list('',', ');
+	$mywiki_date = sprintf( '<a href="%1$s" title="%2$s" ><time datetime="%3$s">%4$s</time></a>',
+		esc_url( get_permalink() ),
+		esc_attr( get_the_time() ),
+		esc_attr( get_the_date( 'c' ) ),
+		esc_html( get_the_date() )
+	);
+	$mywiki_author = sprintf( '<span><a href="%1$s" title="%2$s" >%3$s</a></span>',
+		esc_url( get_author_posts_url( get_the_author_meta( 'ID' ) ) ),
+		esc_attr( sprintf( __( 'View all posts by %s', 'mywiki' ), get_the_author() ) ),
+		get_the_author()
+	);
+	if ( $mywiki_tag_list ) {
+		$mywiki_utility_text = __( 'Posted %3$s by %4$s & filed under %1$s Comments: '.get_comments_number(), 'mywiki' );
+	} elseif ( $mywiki_category_list ) {
+		$mywiki_utility_text = __( 'Posted %3$s by %4$s & filed under %1$s Comments: '.get_comments_number(), 'mywiki' );
+	} else {
+		$mywiki_utility_text = __(__( 'Posted %3$s by %4$s Comments:','mywiki'), get_comments_number());
+	}
+	printf(
+		$mywiki_utility_text,
+		$mywiki_category_list,
+		$mywiki_tag_list,
+		$mywiki_date,
+		$mywiki_author
+	);
 }
-
+endif;
 /**
- * Get the total number of users on the forums
- *
- * @since bbPress (r2769)
- * @uses count_users() To execute our query and get the var back
- * @uses apply_filters() Calls 'bbp_get_total_users' with number of users
- * @return int Total number of users
+ * Add default menu style if menu is not set from the backend.
  */
-function bbp_get_total_users() {
-	$user_count = count_users();
-	return apply_filters( 'bbp_get_total_users', (int) $user_count['total_users'] );
+function mywiki_add_menuclass ($page_markup) {
+preg_match('/^<div class=\"([a-z0-9-_]+)\">/i', $page_markup, $mywiki_matches);
+$mywiki_toreplace = array('<div class="navbar-collapse collapse top-gutter">', '</div>');
+$mywiki_replace = array('<div class="navbar-collapse collapse top-gutter">', '</div>');
+$mywiki_new_markup = str_replace($mywiki_toreplace,$mywiki_replace, $page_markup);
+$mywiki_new_markup= preg_replace('/<ul/', '<ul class="nav navbar-nav navbar-right mywiki-header-menu"', $mywiki_new_markup);
+return $mywiki_new_markup; } //}
+add_filter('wp_page_menu', 'mywiki_add_menuclass');
+register_nav_menus(
+		array(
+			'primary' => __( 'The Main Menu', 'mywiki' ),  // main nav in header
+			'footer-links' => __( 'Footer Links', 'mywiki' ) // secondary nav in footer
+		)
+	);
+function mywiki_category_widget_function($mywiki_args) {
+   extract($mywiki_args);
+   echo $before_widget;
+  echo $before_title . '<p class="wid-category"><span>'.__('Categories','mywiki').'</span></p>' . $after_title;
+   echo $after_widget;
+   // print some HTML for the widget to display here
+  $mywiki_cat = array(
+			'child_of'                 => 0,
+			'parent'                   => '',
+			'orderby'                  => 'name',
+			'order'                    => 'ASC',
+			'hide_empty'               => 0,
+			'hierarchical'             => 1,
+                        'exclude'                  => '',			
+			'include'                  => '',
+			'number'                   => '',
+			'taxonomy'                 => 'category',
+			'pad_counts'               => false
+			 );
+	 
+	 $mywiki_cat = get_categories( $mywiki_cat );
+	 echo "<div class='wid-cat-container'><ul>";
+	 foreach ($mywiki_cat as $mywiki_categories) {
+		 ?>
+<li><a href="<?php echo get_category_link( $mywiki_categories->term_id );?>" class="wid-cat-title"><?php echo $mywiki_categories->name ; ?>
+</a></li>
+<?php }
+echo "</ul></div>";
 }
-
-/** Premissions ***************************************************************/
-
-/**
- * Redirect if unathorized user is attempting to edit another user
- *
- * This is hooked to 'bbp_template_redirect' and controls the conditions under
- * which a user can edit another user (or themselves.) If these conditions are
- * met. We assume a user cannot perform this task, and look for ways they can
- * earn the ability to access this template.
- *
- * @since bbPress (r3605)
- *
- * @uses bbp_is_topic_edit()
- * @uses current_user_can()
- * @uses bbp_get_topic_id()
- * @uses wp_safe_redirect()
- * @uses bbp_get_topic_permalink()
- */
-function bbp_check_user_edit() {
-
-	// Bail if not editing a topic
-	if ( ! bbp_is_single_user_edit() )
-		return;
-
-	// Default to false
-	$redirect = true;
-
-	// Allow user to edit their own profile
-	if ( bbp_is_user_home_edit() ) {
-		$redirect = false;
-
-	// Allow if current user can edit the displayed user
-	} elseif ( current_user_can( 'edit_user', bbp_get_displayed_user_id() ) ) {
-		$redirect = false;
-
-	// Allow if user can manage network users, or edit-any is enabled
-	} elseif ( current_user_can( 'manage_network_users' ) || apply_filters( 'enable_edit_any_user_configuration', false ) ) {
-		$redirect = false;
-	}
-
-	// Maybe redirect back to profile page
-	if ( true === $redirect ) {
-		wp_safe_redirect( bbp_get_user_profile_url( bbp_get_displayed_user_id() ) );
-		exit();
-	}
+wp_register_sidebar_widget(
+    __('Category Widget','mywiki'),        // your unique widget id
+    __('Category Widget','mywiki'),          // widget name
+    'mywiki_category_widget_function',  // callback function
+    array(                  // options
+        'description' => __('Category Widget Shows Category','mywiki')
+    )	
+);
+add_action( 'widgets_init', 'mywiki_popular_load_widgets' );
+function mywiki_popular_load_widgets() {
+register_widget( 'mywiki_popular_widget' );
+register_widget( 'mywiki_recentpost_widget' );
 }
-
-/**
- * Check if a user is blocked, or cannot spectate the forums.
- *
- * @since bbPress (r2996)
- *
- * @uses is_user_logged_in() To check if user is logged in
- * @uses bbp_is_user_keymaster() To check if user is a keymaster
- * @uses current_user_can() To check if the current user can spectate
- * @uses is_bbpress() To check if in a bbPress section of the site
- * @uses bbp_set_404() To set a 404 status
- */
-function bbp_forum_enforce_blocked() {
-
-	// Bail if not logged in or keymaster
-	if ( ! is_user_logged_in() || bbp_is_user_keymaster() ) {
-		return;
-	}
-
-	// Set 404 if in bbPress and user cannot spectate
-	if ( is_bbpress() && ! current_user_can( 'spectate' ) ) {
-		bbp_set_404();
-	}
+/** Define the Widget as an extension of WP_Widget **/
+class mywiki_popular_widget extends WP_Widget {
+function __construct() {
+/* Widget settings. */
+$mywiki_widget_ops = array( 'classname' => 'widget_popular', 'description' => __('Displays most popular posts by comment count','mywiki'));
+ 
+/* Widget control settings. */
+$mywiki_control_ops = array( 'id_base' => 'popular-widget' );
+ 
+/* Create the widget. */
+parent::__construct( 'popular-widget', __('Popular Posts','mywiki'), $mywiki_widget_ops, $mywiki_control_ops );
 }
-
-/** Sanitization **************************************************************/
-
-/**
- * Sanitize displayed user data, when viewing and editing any user.
- *
- * This somewhat monolithic function handles the escaping and sanitization of
- * user data for a bbPress profile. There are two reasons this all happers here:
- *
- * 1. bbPress took a similar approach to WordPress, and funnels all user profile
- *    data through a central helper. This eventually calls sanitize_user_field()
- *    which applies a few context based filters, which some third party plugins
- *    might be relying on bbPress to play nicely with.
- *
- * 2. Early versions of bbPress 2.x templates did not escape this data meaning
- *    a backwards compatible approach like this one was necessary to protect
- *    existing installations that may have custom template parts.
- *
- * @since bbPress (r5368)
- *
- * @param string $value
- * @param string $field
- * @param string $context
- * @return string
- */
-function bbp_sanitize_displayed_user_field( $value = '', $field = '', $context = 'display' ) {
-
-	// Bail if not editing or displaying (maybe we'll do more here later)
-	if ( ! in_array( $context, array( 'edit', 'display' ) ) ) {
-		return $value;
-	}
-
-	// By default, no filter set (consider making this an array later)
-	$filter = false;
-
-	// Big switch statement to decide which user field we're sanitizing and how
-	switch ( $field ) {
-
-		// Description is a paragraph
-		case 'description' :
-			$filter = ( 'edit' === $context ) ? '' : 'wp_kses_data';
-			break;
-
-		// Email addresses are sanitized with a specific function
-		case 'user_email'  :
-			$filter = 'sanitize_email';
-			break;
-
-		// Name & login fields
-		case 'user_login'   :
-		case 'display_name' :
-		case 'first_name'   :
-		case 'last_name'    :
-		case 'nick_name'    :
-			$filter = ( 'edit' === $context ) ? 'esc_attr' : 'esc_html';
-			break;
-
-		// wp-includes/default-filters.php escapes this for us via esc_url()
-		case 'user_url' :
-			break;
-	}
-
-	// Run any applicable filters on the value
-	if ( ! empty( $filter ) ) {
-		$value = call_user_func( $filter, $value );
-	}
-
-	return $value;
+ 
+// Limit to last 30 days
+function filter_where( $where = '' ) {
+// posts in the last 30 days
+$where .= " AND post_date > '" . date('Y-m-d', strtotime('-' . $instance['days'] .' days')) . "'";
+return $where;
 }
+function widget( $args, $instance ) {
+extract( $args );
+echo $before_widget;
+if( !empty( $instance['title'] ) ) echo $before_title .'<p class="wid-category"><span>'.$instance['title'].'</span></p>' . $after_title;
+$loop_args = array(
+'posts_per_page' => (int) $instance['count'],
+'orderby' => 'comment_count'
+);
+if( 0 == $instance['days'] ) {
+$loop = new WP_Query( $loop_args );
+}else{
+add_filter( 'posts_where', array( $this, 'filter_where' ) );
+$loop = new WP_Query( $loop_args );
+remove_filter( 'posts_where', array( $this, 'filter_where' ) );
+}echo "<div class='wid-cat-container'><ul>";
+if( $loop->have_posts() ): while( $loop->have_posts() ): $loop->the_post(); global $post;
+?><li>
+<a href="<?php echo get_permalink();?>" class="wid-cat-title wid-popular-post">
+  <?php the_title() ;?>
+</a></li>
+<?php endwhile; endif; wp_reset_query();
+echo "</ul></div>";
+echo $after_widget;
+}
+function update( $new_instance, $old_instance ) {
+$instance = $old_instance;
+/* Strip tags (if needed) and update the widget settings. */
+$mywiki_instance['title'] = esc_attr( $new_instance['title'] );
+$mywiki_instance['count'] = (int) $new_instance['count'];
+$mywiki_instance['days'] = (int) $new_instance['days'];
+return $instance;
+}
+function form( $instance ) {
+/* Set up some default widget settings. */
+$mywiki_defaults = array( 'title' => '', 'count' => 5, 'days' => 30 );
+$instance = wp_parse_args( (array) $instance, $mywiki_defaults ); ?>
+<p>
+  <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e('Title', 'mywiki') ?>:</label>
+  <input id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" value="<?php echo $instance['title']; ?>" />
+</p>
+<p>
+  <label for="<?php echo $this->get_field_id( 'count' ); ?>"><?php _e('Number of Posts', 'mywiki') ?>:</label>
+  <input id="<?php echo $this->get_field_id( 'count' ); ?>" name="<?php echo $this->get_field_name( 'count' ); ?>" size="3" value="<?php echo $instance['count']; ?>" />
+</p>
+<p>
+  <label for="<?php echo $this->get_field_id( 'days' ); ?>"><?php _e('Posted in the past X days', 'mywiki') ?>:</label>
+  <input id="<?php echo $this->get_field_id( 'days' ); ?>" name="<?php echo $this->get_field_name( 'days' ); ?>" size="3" value="<?php echo $instance['days']; ?>" />
+</p>
+<p class="description"><?php _e('Use 0 for no time limit.', 'mywiki') ?></p>
+<?php
+}
+}
+class mywiki_recentpost_widget extends WP_Widget {
+function __construct() {
+/* Widget settings. */
+$mywiki_widget_ops = array( 'classname' => 'widget_recentpost', 'description' => __('Displays most recent posts by post count','mywiki') );
+ 
+/* Widget control settings. */
+$mywiki_control_ops = array( 'id_base' => 'recent-widget' );
+ 
+/* Create the widget. */
+parent::__construct( 'recent-widget', __('Recent Posts','mywiki'), $mywiki_widget_ops, $mywiki_control_ops );
+}
+function widget( $args, $instance ) {
+extract( $args );
+echo $before_widget;
+if( !empty( $instance['title'] ) ) echo $before_title .'<p class="wid-category"><span>'.$instance['title'].'</span></p>' . $after_title;
+$mywiki_loop_args = array(
+'posts_per_page' => (int) $instance['count'],
+'orderby' => 'DESC'
+);
+$mywiki_loop = new WP_Query( $mywiki_loop_args );
+echo "<div class='wid-cat-container'><ul>";
+if( $mywiki_loop->have_posts() ): while( $mywiki_loop->have_posts() ): $mywiki_loop->the_post(); global $post;
+?><li>
+<a href="<?php echo get_permalink();?>" class="wid-cat-title wid-popular-post"><?php the_title() ;?></a></li>
+<?php endwhile; endif; wp_reset_query();
+echo "</ul></div>";
+echo $after_widget;
+}
+function update( $new_instance, $old_instance ) {
+$mywiki_instance = $old_instance;
+/* Strip tags (if needed) and update the widget settings. */
+$mywiki_instance['title'] = esc_attr( $new_instance['title'] );
+$mywiki_instance['count'] = (int) $new_instance['count'];
+return $mywiki_instance;
+}
+function form( $instance ) {
+/* Set up some default widget settings. */
+$mywiki_defaults = array( 'title' => '', 'count' => 5, 'days' => 30 );
+$instance = wp_parse_args( (array) $instance, $mywiki_defaults ); ?>
+<p>
+  <label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e('Title', 'mywiki') ?>:</label>
+  <input id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" value="<?php echo $instance['title']; ?>" />
+</p>
+<p>
+  <label for="<?php echo $this->get_field_id( 'count' ); ?>"><?php _e('Number of Posts', 'mywiki') ?>:</label>
+  <input id="<?php echo $this->get_field_id( 'count' ); ?>" name="<?php echo $this->get_field_name( 'count' ); ?>" size="3" value="<?php echo $instance['count']; ?>" />
+</p>
+<?php
+} 
+}
+    register_sidebar(array(
+    	'id' => 'sidebar1',
+    	'name' => __('Main Sidebar','mywiki'),
+    	'description' => __('Used on every page.','mywiki'),
+    	'before_widget' => '<div id="%1$s" class="widget %2$s">',
+    	'after_widget' => '</div>',
+    	'before_title' => '<h4 class="widgettitle">',
+    	'after_title' => '</h4>',
+    ));
+	    register_sidebar(array(
+    	'id' => 'footer1',
+    	'name' => __('Footer Content Area 1','mywiki'),
+    	'description' => __('Used on Footer.','mywiki'),
+    	'before_widget' => '<div id="%1$s" class="widget %2$s">',
+    	'after_widget' => '</div>',
+    	'before_title' => '<h4 class="widgettitle">',
+    	'after_title' => '</h4>',
+    ));
+	    register_sidebar(array(
+    	'id' => 'footer2',
+    	'name' => __('Footer Content Area 2','mywiki'),
+    	'description' => __('Used on Footer.','mywiki'),
+    	'before_widget' => '<div id="%1$s" class="widget %2$s">',
+    	'after_widget' => '</div>',
+    	'before_title' => '<h4 class="widgettitle">',
+    	'after_title' => '</h4>',
+    ));
+	    register_sidebar(array(
+    	'id' => 'footer3',
+    	'name' => __('Footer Content Area 3','mywiki'),
+    	'description' => __('Used on Footer.','mywiki'),
+    	'before_widget' => '<div id="%1$s" class="widget %2$s">',
+    	'after_widget' => '</div>',
+    	'before_title' => '<h4 class="widgettitle">',
+    	'after_title' => '</h4>',
+    ));
+if ( function_exists( 'add_theme_support' ) ) {
+		add_theme_support( 'post-thumbnails' );
+    set_post_thumbnail_size( 150, 150 ); // default Post Thumbnail dimensions
+}
+if ( function_exists( 'add_image_size' ) ) { 
+		add_image_size( 'category-thumb', 300, 9999 ); //300 pixels wide (and unlimited height)
+		add_image_size( 'homepage-thumb', 220, 180, true ); //(cropped)
+}
+add_theme_support( 'html5', array( 'comment-list', 'comment-form', 'search-form' ) );
+function mywiki_custom_breadcrumbs() {
+  $mywiki_showOnHome = 0; // 1 - show breadcrumbs on the homepage, 0 - don't show
+  $mywiki_delimiter = '&raquo;'; // delimiter between crumbs
+  $mywiki_home = __('Home','mywiki'); // text for the 'Home' link
+  $mywiki_showCurrent = 1; // 1 - show current post/page title in breadcrumbs, 0 - don't show
+  $mywiki_before = '<span class="current">'; // tag before the current crumb
+  $mywiki_after = '</span>'; // tag after the current crumb
+  global $post;
+  $mywiki_homeLink = esc_url( home_url( '/' ) );
+  if (is_home() || is_front_page()) {
+    if ($mywiki_showOnHome == 1) echo '<div id="crumbs" class="mywiki_breadcrumbs"><a href="' . $mywiki_homeLink . '">' . $mywiki_home . '</a></div>';
+  } else {
+    echo '<div id="crumbs" class="mywiki_breadcrumbs"><a href="' . $mywiki_homeLink . '">' . $mywiki_home . '</a> ' . $mywiki_delimiter . ' ';
+    if ( is_category() ) {
+      $mywiki_thisCat = get_category(get_query_var('cat'), false);
+      if ($mywiki_thisCat->parent != 0) echo get_category_parents($mywiki_thisCat->parent, TRUE, ' ' . $mywiki_delimiter . ' ');
+      echo $mywiki_before . _e('Archive by category ','mywiki').' : '.single_cat_title('', false).$mywiki_after;
+    } elseif ( is_search() ) {
+      echo $mywiki_before . _e('Search results for ','mywiki') . get_search_query() . '"' . $mywiki_after;
+    } elseif ( is_day() ) {
+      echo '<a href="' . get_year_link(get_the_time('Y')) . '">' . get_the_time('Y') . '</a> ' . $mywiki_delimiter . ' ';
+      echo '<a href="' . get_month_link(get_the_time('Y'),get_the_time('m')) . '">' . get_the_time('F') . '</a> ' . $mywiki_delimiter . ' ';
+      echo $mywiki_before . get_the_time('d') . $mywiki_after;
+    } elseif ( is_month() ) {
+      echo '<a href="' . get_year_link(get_the_time('Y')) . '">' . get_the_time('Y') . '</a> ' . $mywiki_delimiter . ' ';
+      echo $mywiki_before . get_the_time('F') . $mywiki_after;
+    } elseif ( is_year() ) {
+      echo $mywiki_before . get_the_time('Y') . $mywiki_after;
+    } elseif ( is_single() && !is_attachment() ) {
+      if ( get_post_type() != 'post' ) {
+        $mywiki_post_type = get_post_type_object(get_post_type());
+        $mywiki_slug = $mywiki_post_type->rewrite;
+        echo '<a href="' . $mywiki_homeLink . '/' . $mywiki_slug['slug'] . '/">' . $mywiki_post_type->labels->singular_name . '</a>';
+        if ($mywiki_showCurrent == 1) echo ' ' . $mywiki_delimiter . ' ' . $mywiki_before . get_the_title() . $mywiki_after;
+      } else {
+        $mywiki_cat = get_the_category(); $mywiki_cat = $mywiki_cat[0];
+        $mywiki_cats = get_category_parents($mywiki_cat, TRUE, ' ' . $mywiki_delimiter . ' ');
+        if ($mywiki_showCurrent == 0) $mywiki_cats = preg_replace("#^(.+)\s$mywiki_delimiter\s$#", "$1", $mywiki_cats);
+        echo $mywiki_cats;
+        if ($mywiki_showCurrent == 1) echo $mywiki_before . get_the_title() . $mywiki_after;
+      }
+    } elseif ( !is_single() && !is_page() && get_post_type() != 'post' && !is_404() ) {
+      $mywiki_post_type = get_post_type_object(get_post_type());
+      echo $mywiki_before . $mywiki_post_type->labels->singular_name . $mywiki_after;
+    } elseif ( is_attachment() ) {
+      $mywiki_parent = get_post($post->post_parent);
+      $mywiki_cat = get_the_category($mywiki_parent->ID); $mywiki_cat = $mywiki_cat[0];
+      echo get_category_parents($mywiki_cat, TRUE, ' ' . $mywiki_delimiter . ' ');
+      echo '<a href="' . get_permalink($mywiki_parent) . '">' . $mywiki_parent->post_title . '</a>';
+      if ($mywiki_showCurrent == 1) echo ' ' . $mywiki_delimiter . ' ' . $mywiki_before . get_the_title() . $mywiki_after;
+    } elseif ( is_page() && !$post->post_parent ) {
+      if ($mywiki_showCurrent == 1) echo $mywiki_before . get_the_title() . $mywiki_after;
+    } elseif ( is_page() && $post->post_parent ) {
+      $mywiki_parent_id  = $post->post_parent;
+      $mywiki_breadcrumbs = array();
+      while ($mywiki_parent_id) {
+        $mywiki_page = get_page($mywiki_parent_id);
+        $mywiki_breadcrumbs[] = '<a href="' . get_permalink($mywiki_page->ID) . '">' . get_the_title($mywiki_page->ID) . '</a>';
+        $mywiki_parent_id  = $mywiki_page->post_parent;
+      }
+      $mywiki_breadcrumbs = array_reverse($mywiki_breadcrumbs);
+      for ($mywiki_i = 0; $mywiki_i < count($mywiki_breadcrumbs); $mywiki_i++) {
+        echo $mywiki_breadcrumbs[$mywiki_i];
+        if ($mywiki_i != count($mywiki_breadcrumbs)-1) echo ' ' . $mywiki_delimiter . ' ';
+      }
+      if ($mywiki_showCurrent == 1) echo ' ' . $mywiki_delimiter . ' ' . $mywiki_before . get_the_title() . $mywiki_after;
+    } elseif ( is_tag() ) {
+      echo $mywiki_before ._e('Posts tagged ','mywiki') . single_tag_title('', false) . '"' . $mywiki_after;
+    } elseif ( is_author() ) {
+      global $author;
+      $mywiki_userdata = get_userdata($author);
+      echo $mywiki_before . _e('Articles posted by ','mywiki'). $mywiki_userdata->display_name . $mywiki_after;
+  
+    } elseif ( is_404() ) {
+      echo $mywiki_before . _e('Error 404 ','mywiki'). $mywiki_after;
+    }
+    if ( get_query_var('paged') ) {
+      if ( is_category() || is_day() || is_month() || is_year() || is_search() || is_tag() || is_author() ) echo ' (';
+      echo'paged'. ' ' . get_query_var('paged');
+      if ( is_category() || is_day() || is_month() || is_year() || is_search() || is_tag() || is_author() ) echo ')';
+    }
+    echo '</div>';
+  }
+} // end qt_custom_breadcrumbs()
 
-/** Converter *****************************************************************/
-
+/* ===========================================================
+	T H E M E  O P T I O N S
+=============================================================*/
+require_once('theme-options/fasterthemes.php'); 
 /**
- * Convert passwords from previous platfrom encryption to WordPress encryption.
- *
- * @since bbPress (r3813)
- * @global WPDB $wpdb
+ * Wiki search
  */
-function bbp_user_maybe_convert_pass() {
-
-	// Bail if no username
-	$username = !empty( $_POST['log'] ) ? $_POST['log'] : '';
-	if ( empty( $username ) )
-		return;
-
+function mywiki_search() {
 	global $wpdb;
-
-	// Bail if no user password to convert
-	$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->users} INNER JOIN {$wpdb->usermeta} ON user_id = ID WHERE meta_key = '_bbp_class' AND user_login = '%s' LIMIT 1", $username ) );
-	if ( empty( $row ) || is_wp_error( $row ) )
-		return;
-
-	// Setup admin (to include converter)
-	require_once( bbpress()->includes_dir . 'admin/admin.php' );
-
-	// Create the admin object
-	bbp_admin();
-
-	// Convert password
-	require_once( bbpress()->admin->admin_dir . 'converter.php' );
-	require_once( bbpress()->admin->admin_dir . 'converters/' . $row->meta_value . '.php' );
-
-	// Create the converter
-	$converter = bbp_new_converter( $row->meta_value );
-
-	// Try to call the conversion method
-	if ( is_a( $converter, 'BBP_Converter_Base' ) && method_exists( $converter, 'callback_pass' ) ) {
-		$converter->callback_pass( $username, $_POST['pwd'] );
+	$mywiki_title=trim($_POST['queryString']);
+	$mywiki_args = array('posts_per_page' => -1, 'order'=> 'ASC', "orderby"=> "title", "post_type" => "post",'post_status'=>'publish', "s" => $mywiki_title);
+    $mywiki_posts = get_posts( $mywiki_args );
+	$mywiki_output='';
+	if($mywiki_posts){
+		 $mywiki_h=0;
+		 $mywiki_output.='<ul id="search-result">';
+		 foreach ( $mywiki_posts as $mywiki_post ) 
+		 { 
+			 $mywiki_output.='<li class="que-icn">';
+             $mywiki_output.='<a href="'.$mywiki_posts[$mywiki_h]->guid.'">'.$mywiki_posts[$mywiki_h]->post_title.'</a>';
+             $mywiki_output.='</li>';
+			 $mywiki_h++;
+		 }
+		 $mywiki_output.='</ul>';
+		 echo $mywiki_output;
+	}else{
+	     $mywiki_output.='no';
+        echo $mywiki_output;
 	}
+	die();
 }
+add_action('wp_ajax_mywiki_search', 'mywiki_search');
+add_action('wp_ajax_nopriv_mywiki_search', 'mywiki_search' );
+if ( ! function_exists( 'mywiki_comment' ) ) :
+/**
+ * Template for comments and pingbacks.
+ *
+ * To override this walker in a child theme without modifying the comments template
+ * simply create your own mywiki_comment(), and that function will be used instead.
+ *
+ * Used as a callback by wp_list_comments() for displaying the comments.
+ *
+ * @since Twenty Twelve 1.0
+ */
+function mywiki_comment( $comment, $args, $depth ) {
+	$GLOBALS['comment'] = $comment;
+		// Proceed with normal comments.
+		global $post;
+	$mywiki_tag = ( 'div' === $args['style'] ) ? '<div' : '<li'; ?>
+		<?php echo $mywiki_tag; ?> id="comment-<?php comment_ID(); ?>" <?php comment_class( empty( $args['has_children'] ) ? '' : 'parent' ); ?> >
+    	<article class="div-comment-<?php comment_ID(); ?>" id="div-comment-1">
+				<footer class="comment-meta">
+					<div class="comment-author vcard">
+						<?php if ( 0 != $args['avatar_size'] ) echo get_avatar( $comment, $args['avatar_size'] ); ?>
+					<b class="fn">	<?php printf( __( '%s says:','mywiki' ), sprintf( '%s', get_comment_author_link() ) ); ?></b>
+					</div><!-- .comment-author -->
+					<div class="comment-metadata">
+						<a href="<?php echo esc_url( get_comment_link( $comment->comment_ID ) ); ?>">
+							<time datetime="<?php comment_time( 'c' ); ?>">
+								<?php printf( __( '%1$s at %2$s', 'mywiki' ), get_comment_date(), get_comment_time() ); ?>
+							</time>
+						</a>
+						<?php edit_comment_link( __( 'Edit','mywiki' ), '<span class="edit-link">', '</span>' ); ?>
+          </div><!-- .comment-metadata -->
+				</footer><!-- .comment-meta -->
+				<div class="comment-content">
+					<?php comment_text(); ?>
+				</div><!-- .comment-content -->
+				<div class="reply">
+					<?php comment_reply_link( array_merge( $args, array( 'add_below' => 'div-comment', 'depth' => $depth, 'max_depth' => $args['max_depth'] ) ) ); ?>
+               </div><!-- .reply -->
+			</article>
+	<?php
+}
+endif;
+add_action('wp_ajax_mywiki_header', 'mywiki_header_image_function');
+add_action('wp_ajax_nopriv_mywiki_header', 'mywiki_header_image_function' );
+function mywiki_header_image_function(){
+	$mywiki_return['header'] = get_header_image();
+	echo json_encode($mywiki_return);
+	die;
+}
+/* 
+Adding Read More
+*/
+function mywiki_trim_excerpt($mywiki_text) {
+ $text = substr($mywiki_text,0,-10); 
+ return $text.'..<div class="clear-fix"></div><a href="'.get_permalink().'" title="'.__('read more...','mywiki').'">'.__('Read more','mywiki').'</a>';
+}
+add_filter('get_the_excerpt', 'mywiki_trim_excerpt'); ?>
