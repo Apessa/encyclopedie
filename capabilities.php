@@ -1,695 +1,921 @@
 <?php
-
 /**
- * bbPress User Capabilites
+ * Core User Role & Capabilities API
  *
- * Used to map user capabilities to WordPress's existing capabilities.
- *
- * @package bbPress
- * @subpackage Capabilities
+ * @package WordPress
+ * @subpackage Users
  */
 
 /**
- * Maps primary capabilities
+ * Map meta capabilities to primitive capabilities.
  *
- * @since bbPress (r4242)
+ * This does not actually compare whether the user ID has the actual capability,
+ * just what the capability or capabilities are. Meta capability list value can
+ * be 'delete_user', 'edit_user', 'remove_user', 'promote_user', 'delete_post',
+ * 'delete_page', 'edit_post', 'edit_page', 'read_post', or 'read_page'.
  *
- * @param array $caps Capabilities for meta capability
- * @param string $cap Capability name
- * @param int $user_id User id
- * @param mixed $args Arguments
- * @uses apply_filters() Filter mapped results
- * @return array Actual capabilities for meta capability
+ * @since 2.0.0
+ *
+ * @global array $post_type_meta_caps Used to get post type meta capabilities.
+ *
+ * @param string $cap       Capability name.
+ * @param int    $user_id   User ID.
+ * @param int    $object_id Optional. ID of the specific object to check against if `$cap` is a "meta" cap.
+ *                          "Meta" capabilities, e.g. 'edit_post', 'edit_user', etc., are capabilities used
+ *                          by map_meta_cap() to map to other "primitive" capabilities, e.g. 'edit_posts',
+ *                          'edit_others_posts', etc. The parameter is accessed via func_get_args().
+ * @return array Actual capabilities for meta capability.
  */
-function bbp_map_primary_meta_caps( $caps = array(), $cap = '', $user_id = 0, $args = array() ) {
+function map_meta_cap( $cap, $user_id ) {
+	$args = array_slice( func_get_args(), 2 );
+	$caps = array();
 
-	// What capability is being checked?
 	switch ( $cap ) {
-		case 'spectate'    :
-		case 'participate' :
-		case 'moderate'    :
-
-			// Do not allow inactive users
-			if ( bbp_is_user_inactive( $user_id ) ) {
-				$caps = array( 'do_not_allow' );
-
-			// Moderators are always participants
-			} else {
-				$caps = array( $cap );
-			}
-
-			break;
-	}
-
-	return apply_filters( 'bbp_map_primary_meta_caps', $caps, $cap, $user_id, $args );
-}
-
-/**
- * Return a user's main role
- *
- * @since bbPress (r3860)
- *
- * @param int $user_id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_userdata() To get the user data
- * @uses apply_filters() Calls 'bbp_set_user_role' with the role and user id
- * @return string
- */
-function bbp_set_user_role( $user_id = 0, $new_role = '' ) {
-
-	// Validate user id
-	$user_id = bbp_get_user_id( $user_id, false, false );
-	$user    = get_userdata( $user_id );
-
-	// User exists
-	if ( !empty( $user ) ) {
-
-		// Get users forum role
-		$role = bbp_get_user_role( $user_id );
-
-		// User already has this role so no new role is set
-		if ( $new_role === $role ) {
-			$new_role = false;
-
-		// Users role is different than the new role
+	case 'remove_user':
+		// In multisite the user must be a super admin to remove themselves.
+		if ( isset( $args[0] ) && $user_id == $args[0] && ! is_super_admin( $user_id ) ) {
+			$caps[] = 'do_not_allow';
 		} else {
+			$caps[] = 'remove_users';
+		}
+		break;
+	case 'promote_user':
+	case 'add_users':
+		$caps[] = 'promote_users';
+		break;
+	case 'edit_user':
+	case 'edit_users':
+		// Allow user to edit itself
+		if ( 'edit_user' == $cap && isset( $args[0] ) && $user_id == $args[0] )
+			break;
 
-			// Remove the old role
-			if ( ! empty( $role ) ) {
-				$user->remove_role( $role );
+		// In multisite the user must have manage_network_users caps. If editing a super admin, the user must be a super admin.
+		if ( is_multisite() && ( ( ! is_super_admin( $user_id ) && 'edit_user' === $cap && is_super_admin( $args[0] ) ) || ! user_can( $user_id, 'manage_network_users' ) ) ) {
+			$caps[] = 'do_not_allow';
+		} else {
+			$caps[] = 'edit_users'; // edit_user maps to edit_users.
+		}
+		break;
+	case 'delete_post':
+	case 'delete_page':
+		$post = get_post( $args[0] );
+		if ( ! $post ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		if ( 'revision' == $post->post_type ) {
+			$post = get_post( $post->post_parent );
+			if ( ! $post ) {
+				$caps[] = 'do_not_allow';
+				break;
 			}
-
-			// Add the new role
-			if ( !empty( $new_role ) ) {
-
-				// Make sure bbPress roles are added
-				bbp_add_forums_roles();
-
-				$user->add_role( $new_role );
-			}
 		}
 
-	// User does don exist so return false
-	} else {
-		$new_role = false;
-	}
-
-	return apply_filters( 'bbp_set_user_role', $new_role, $user_id, $user );
-}
-
-/**
- * Return a user's forums role
- *
- * @since bbPress (r3860)
- *
- * @param int $user_id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_userdata() To get the user data
- * @uses apply_filters() Calls 'bbp_get_user_role' with the role and user id
- * @return string
- */
-function bbp_get_user_role( $user_id = 0 ) {
-
-	// Validate user id
-	$user_id = bbp_get_user_id( $user_id );
-	$user    = get_userdata( $user_id );
-	$role    = false;
-
-	// User has roles so look for a bbPress one
-	if ( ! empty( $user->roles ) ) {
-
-		// Look for a bbPress role
-		$roles = array_intersect(
-			array_values( $user->roles ),
-			array_keys( bbp_get_dynamic_roles() )
-		);
-
-		// If there's a role in the array, use the first one. This isn't very
-		// smart, but since roles aren't exactly hierarchical, and bbPress
-		// does not yet have a UI for multiple user roles, it's fine for now.
-		if ( !empty( $roles ) ) {
-			$role = array_shift( $roles );
+		if ( ( get_option( 'page_for_posts' ) == $post->ID ) || ( get_option( 'page_on_front' ) == $post->ID ) ) {
+			$caps[] = 'manage_options';
+			break;
 		}
-	}
 
-	return apply_filters( 'bbp_get_user_role', $role, $user_id, $user );
-}
-
-/**
- * Return a user's blog role
- *
- * @since bbPress (r4446)
- *
- * @param int $user_id
- * @uses bbp_get_user_id() To get the user id
- * @uses get_userdata() To get the user data
- * @uses apply_filters() Calls 'bbp_get_user_blog_role' with the role and user id
- * @return string
- */
-function bbp_get_user_blog_role( $user_id = 0 ) {
-
-	// Add bbPress roles (returns $wp_roles global)
-	bbp_add_forums_roles();
-
-	// Validate user id
-	$user_id = bbp_get_user_id( $user_id );
-	$user    = get_userdata( $user_id );
-	$role    = false;
-
-	// User has roles so lets
-	if ( ! empty( $user->roles ) ) {
-
-		// Look for a non bbPress role
-		$roles     = array_intersect(
-			array_values( $user->roles ),
-			array_keys( bbp_get_blog_roles() )
-		);
-
-		// If there's a role in the array, use the first one. This isn't very
-		// smart, but since roles aren't exactly hierarchical, and WordPress
-		// does not yet have a UI for multiple user roles, it's fine for now.
-		if ( !empty( $roles ) ) {
-			$role = array_shift( $roles );
+		$post_type = get_post_type_object( $post->post_type );
+		if ( ! $post_type ) {
+			/* translators: 1: post type, 2: capability name */
+			_doing_it_wrong( __FUNCTION__, sprintf( __( 'The post type %1$s is not registered, so it may not be reliable to check the capability "%2$s" against a post of that type.' ), $post->post_type, $cap ), '4.4.0' );
+			$caps[] = 'edit_others_posts';
+			break;
 		}
-	}
 
-	return apply_filters( 'bbp_get_user_blog_role', $role, $user_id, $user );
-}
+		if ( ! $post_type->map_meta_cap ) {
+			$caps[] = $post_type->cap->$cap;
+			// Prior to 3.1 we would re-call map_meta_cap here.
+			if ( 'delete_post' == $cap )
+				$cap = $post_type->cap->$cap;
+			break;
+		}
 
-/**
- * Helper function hooked to 'bbp_profile_update' action to save or
- * update user roles and capabilities.
- *
- * @since bbPress (r4235)
- *
- * @param int $user_id
- * @uses bbp_reset_user_caps() to reset caps
- * @usse bbp_save_user_caps() to save caps
- */
-function bbp_profile_update_role( $user_id = 0 ) {
-
-	// Bail if no user ID was passed
-	if ( empty( $user_id ) )
-		return;
-
-	// Bail if no role
-	if ( ! isset( $_POST['bbp-forums-role'] ) )
-		return;
-
-	// Fromus role we want the user to have
-	$new_role    = sanitize_text_field( $_POST['bbp-forums-role'] );
-	$forums_role = bbp_get_user_role( $user_id );
-
-	// Bail if no role change
-	if ( $new_role === $forums_role )
-		return;
-
-	// Bail if trying to set their own role
-	if ( bbp_is_user_home_edit() )
-		return;
-	
-	// Bail if current user cannot promote the passing user
-	if ( ! current_user_can( 'promote_user', $user_id ) )
-		return;
-
-	// Set the new forums role
-	bbp_set_user_role( $user_id, $new_role );
-}
-
-/**
- * Add the default role to the current user if needed
- *
- * This function will bail if the forum is not global in a multisite
- * installation of WordPress, or if the user is marked as spam or deleted.
- *
- * @since bbPress (r3380)
- *
- * @uses is_user_logged_in() To bail if user is not logged in
- * @uses bbp_get_user_role() To bail if user already has a role
- * @uses bbp_is_user_inactive() To bail if user is inactive
- * @uses bbp_allow_global_access() To know whether to save role to database
- * @uses bbp_get_user_role_map() To get the WP to BBP role map array
- * @uses bbp_get_default_role() To get the site's default forums role
- * @uses get_option()
- *
- * @return If not multisite, not global, or user is deleted/spammed
- */
-function bbp_set_current_user_default_role() {
-
-	/** Sanity ****************************************************************/
-
-	// Bail if deactivating bbPress
-	if ( bbp_is_deactivation() )
-		return;
-
-	// Catch all, to prevent premature user initialization
-	if ( ! did_action( 'set_current_user' ) )
-		return;
-
-	// Bail if not logged in or already a member of this site
-	if ( ! is_user_logged_in() )
-		return;
-
-	// Get the current user ID
-	$user_id = bbp_get_current_user_id();
-
-	// Bail if user already has a forums role
-	if ( bbp_get_user_role( $user_id ) )
-		return;
-
-	// Bail if user is marked as spam or is deleted
-	if ( bbp_is_user_inactive( $user_id ) )
-		return;
-
-	/** Ready *****************************************************************/
-
-	// Load up bbPress once
-	$bbp         = bbpress();
-
-	// Get whether or not to add a role to the user account
-	$add_to_site = bbp_allow_global_access();
-
-	// Get the current user's WordPress role. Set to empty string if none found.
-	$user_role   = bbp_get_user_blog_role( $user_id );
-
-	// Get the role map
-	$role_map    = bbp_get_user_role_map();
-
-	/** Forum Role ************************************************************/
-
-	// Use a mapped role
-	if ( isset( $role_map[$user_role] ) ) {
-		$new_role = $role_map[$user_role];
-
-	// Use the default role
-	} else {
-		$new_role = bbp_get_default_role();
-	}
-
-	/** Add or Map ************************************************************/
-
-	// Add the user to the site
-	if ( true === $add_to_site ) {
-
-		// Make sure bbPress roles are added
-		bbp_add_forums_roles();
-
-		$bbp->current_user->add_role( $new_role );
-
-	// Don't add the user, but still give them the correct caps dynamically
-	} else {		
-		$bbp->current_user->caps[$new_role] = true;
-		$bbp->current_user->get_role_caps();
-	}
-}
-
-/**
- * Return a map of WordPress roles to bbPress roles. Used to automatically grant
- * appropriate bbPress roles to WordPress users that wouldn't already have a
- * role in the forums. Also guarantees WordPress admins get the Keymaster role.
- *
- * @since bbPress (r4334)
- *
- * @return array Filtered array of WordPress roles to bbPress roles
- */
-function bbp_get_user_role_map() {
-
-	// Get the default role once here
-	$default_role = bbp_get_default_role();
-
-	// Return filtered results, forcing admins to keymasters.
-	return (array) apply_filters( 'bbp_get_user_role_map', array (
-		'administrator' => bbp_get_keymaster_role(),
-		'editor'        => $default_role,
-		'author'        => $default_role,
-		'contributor'   => $default_role,
-		'subscriber'    => $default_role
-	) );
-}
-
-/** User Status ***************************************************************/
-
-/**
- * Checks if the user has been marked as a spammer.
- *
- * @since bbPress (r3355)
- *
- * @param int $user_id int The ID for the user.
- * @return bool True if spammer, False if not.
- */
-function bbp_is_user_spammer( $user_id = 0 ) {
-
-	// Default to current user
-	if ( empty( $user_id ) && is_user_logged_in() )
-		$user_id = bbp_get_current_user_id();
-
-	// No user to check
-	if ( empty( $user_id ) )
-		return false;
-
-	// Assume user is not spam
-	$is_spammer = false;
-
-	// Get user data
-	$user = get_userdata( $user_id );
-
-	// No user found
-	if ( empty( $user ) ) {
-		$is_spammer = false;
-
-	// Check if spam
-	} elseif ( !empty( $user->spam ) ) {
-		$is_spammer = true;
-	}
-
-	return (bool) apply_filters( 'bbp_core_is_user_spammer', $is_spammer );
-}
-
-/**
- * Mark a users topics and replies as spam when the user is marked as spam
- *
- * @since bbPress (r3405)
- *
- * @global WPDB $wpdb
- * @param int $user_id Optional. User ID to spam. Defaults to displayed user.
-
- * @uses bbp_is_single_user()
- * @uses bbp_is_user_home()
- * @uses bbp_get_displayed_user_id()
- * @uses bbp_is_user_keymaster()
- * @uses get_blogs_of_user()
- * @uses get_current_blog_id()
- * @uses bbp_get_topic_post_type()
- * @uses bbp_get_reply_post_type()
- * @uses switch_to_blog()
- * @uses get_post_type()
- * @uses bbp_spam_topic()
- * @uses bbp_spam_reply()
- * @uses restore_current_blog()
- *
- * @return If no user ID passed
- */
-function bbp_make_spam_user( $user_id = 0 ) {
-
-	// Use displayed user if it's not yourself
-	if ( empty( $user_id ) && bbp_is_single_user() && !bbp_is_user_home() )
-		$user_id = bbp_get_displayed_user_id();
-
-	// Bail if no user ID
-	if ( empty( $user_id ) )
-		return false;
-
-	// Bail if user ID is keymaster
-	if ( bbp_is_user_keymaster( $user_id ) )
-		return false;
-
-	// Arm the torpedos
-	global $wpdb;
-
-	// Get the blog IDs of the user to mark as spam
-	$blogs = get_blogs_of_user( $user_id, true );
-
-	// If user has no blogs, they are a guest on this site
-	if ( empty( $blogs ) )
-		$blogs[$wpdb->blogid] = array();
-
-	// Make array of post types to mark as spam
-	$post_types  = array( bbp_get_topic_post_type(), bbp_get_reply_post_type() );
-	$post_types  = "'" . implode( "', '", $post_types ) . "'";
-
-	// Loop through blogs and remove their posts
-	foreach ( (array) array_keys( $blogs ) as $blog_id ) {
-
-		// Switch to the blog ID
-		switch_to_blog( $blog_id );
-
-		// Get topics and replies
-		$posts = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_author = %d AND post_status = '%s' AND post_type IN ( {$post_types} )", $user_id, bbp_get_public_status_id() ) );
-
-		// Loop through posts and spam them
-		if ( !empty( $posts ) ) {
-			foreach ( $posts as $post_id ) {
-
-				// The routines for topics ang replies are different, so use the
-				// correct one based on the post type
-				switch ( get_post_type( $post_id ) ) {
-
-					case bbp_get_topic_post_type() :
-						bbp_spam_topic( $post_id );
-						break;
-
-					case bbp_get_reply_post_type() :
-						bbp_spam_reply( $post_id );
-						break;
+		// If the post author is set and the user is the author...
+		if ( $post->post_author && $user_id == $post->post_author ) {
+			// If the post is published or scheduled...
+			if ( in_array( $post->post_status, array( 'publish', 'future' ), true ) ) {
+				$caps[] = $post_type->cap->delete_published_posts;
+			} elseif ( 'trash' == $post->post_status ) {
+				$status = get_post_meta( $post->ID, '_wp_trash_meta_status', true );
+				if ( in_array( $status, array( 'publish', 'future' ), true ) ) {
+					$caps[] = $post_type->cap->delete_published_posts;
+				} else {
+					$caps[] = $post_type->cap->delete_posts;
 				}
+			} else {
+				// If the post is draft...
+				$caps[] = $post_type->cap->delete_posts;
+			}
+		} else {
+			// The user is trying to edit someone else's post.
+			$caps[] = $post_type->cap->delete_others_posts;
+			// The post is published or scheduled, extra cap required.
+			if ( in_array( $post->post_status, array( 'publish', 'future' ), true ) ) {
+				$caps[] = $post_type->cap->delete_published_posts;
+			} elseif ( 'private' == $post->post_status ) {
+				$caps[] = $post_type->cap->delete_private_posts;
 			}
 		}
 
-		// Switch back to current blog
+		/*
+		 * Setting the privacy policy page requires `manage_privacy_options`,
+		 * so deleting it should require that too.
+		 */
+		if ( (int) get_option( 'wp_page_for_privacy_policy' ) === $post->ID ) {
+			$caps = array_merge( $caps, map_meta_cap( 'manage_privacy_options', $user_id ) );
+		}
+
+		break;
+		// edit_post breaks down to edit_posts, edit_published_posts, or
+		// edit_others_posts
+	case 'edit_post':
+	case 'edit_page':
+		$post = get_post( $args[0] );
+		if ( ! $post ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		if ( 'revision' == $post->post_type ) {
+			$post = get_post( $post->post_parent );
+			if ( ! $post ) {
+				$caps[] = 'do_not_allow';
+				break;
+			}
+		}
+
+		$post_type = get_post_type_object( $post->post_type );
+		if ( ! $post_type ) {
+			/* translators: 1: post type, 2: capability name */
+			_doing_it_wrong( __FUNCTION__, sprintf( __( 'The post type %1$s is not registered, so it may not be reliable to check the capability "%2$s" against a post of that type.' ), $post->post_type, $cap ), '4.4.0' );
+			$caps[] = 'edit_others_posts';
+			break;
+		}
+
+		if ( ! $post_type->map_meta_cap ) {
+			$caps[] = $post_type->cap->$cap;
+			// Prior to 3.1 we would re-call map_meta_cap here.
+			if ( 'edit_post' == $cap )
+				$cap = $post_type->cap->$cap;
+			break;
+		}
+
+		// If the post author is set and the user is the author...
+		if ( $post->post_author && $user_id == $post->post_author ) {
+			// If the post is published or scheduled...
+			if ( in_array( $post->post_status, array( 'publish', 'future' ), true ) ) {
+				$caps[] = $post_type->cap->edit_published_posts;
+			} elseif ( 'trash' == $post->post_status ) {
+				$status = get_post_meta( $post->ID, '_wp_trash_meta_status', true );
+				if ( in_array( $status, array( 'publish', 'future' ), true ) ) {
+					$caps[] = $post_type->cap->edit_published_posts;
+				} else {
+					$caps[] = $post_type->cap->edit_posts;
+				}
+			} else {
+				// If the post is draft...
+				$caps[] = $post_type->cap->edit_posts;
+			}
+		} else {
+			// The user is trying to edit someone else's post.
+			$caps[] = $post_type->cap->edit_others_posts;
+			// The post is published or scheduled, extra cap required.
+			if ( in_array( $post->post_status, array( 'publish', 'future' ), true ) ) {
+				$caps[] = $post_type->cap->edit_published_posts;
+			} elseif ( 'private' == $post->post_status ) {
+				$caps[] = $post_type->cap->edit_private_posts;
+			}
+		}
+
+		/*
+		 * Setting the privacy policy page requires `manage_privacy_options`,
+		 * so editing it should require that too.
+		 */
+		if ( (int) get_option( 'wp_page_for_privacy_policy' ) === $post->ID ) {
+			$caps = array_merge( $caps, map_meta_cap( 'manage_privacy_options', $user_id ) );
+		}
+
+		break;
+	case 'read_post':
+	case 'read_page':
+		$post = get_post( $args[0] );
+		if ( ! $post ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		if ( 'revision' == $post->post_type ) {
+			$post = get_post( $post->post_parent );
+			if ( ! $post ) {
+				$caps[] = 'do_not_allow';
+				break;
+			}
+		}
+
+		$post_type = get_post_type_object( $post->post_type );
+		if ( ! $post_type ) {
+			/* translators: 1: post type, 2: capability name */
+			_doing_it_wrong( __FUNCTION__, sprintf( __( 'The post type %1$s is not registered, so it may not be reliable to check the capability "%2$s" against a post of that type.' ), $post->post_type, $cap ), '4.4.0' );
+			$caps[] = 'edit_others_posts';
+			break;
+		}
+
+		if ( ! $post_type->map_meta_cap ) {
+			$caps[] = $post_type->cap->$cap;
+			// Prior to 3.1 we would re-call map_meta_cap here.
+			if ( 'read_post' == $cap )
+				$cap = $post_type->cap->$cap;
+			break;
+		}
+
+		$status_obj = get_post_status_object( $post->post_status );
+		if ( $status_obj->public ) {
+			$caps[] = $post_type->cap->read;
+			break;
+		}
+
+		if ( $post->post_author && $user_id == $post->post_author ) {
+			$caps[] = $post_type->cap->read;
+		} elseif ( $status_obj->private ) {
+			$caps[] = $post_type->cap->read_private_posts;
+		} else {
+			$caps = map_meta_cap( 'edit_post', $user_id, $post->ID );
+		}
+		break;
+	case 'publish_post':
+		$post = get_post( $args[0] );
+		if ( ! $post ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		$post_type = get_post_type_object( $post->post_type );
+		if ( ! $post_type ) {
+			/* translators: 1: post type, 2: capability name */
+			_doing_it_wrong( __FUNCTION__, sprintf( __( 'The post type %1$s is not registered, so it may not be reliable to check the capability "%2$s" against a post of that type.' ), $post->post_type, $cap ), '4.4.0' );
+			$caps[] = 'edit_others_posts';
+			break;
+		}
+
+		$caps[] = $post_type->cap->publish_posts;
+		break;
+	case 'edit_post_meta':
+	case 'delete_post_meta':
+	case 'add_post_meta':
+	case 'edit_comment_meta':
+	case 'delete_comment_meta':
+	case 'add_comment_meta':
+	case 'edit_term_meta':
+	case 'delete_term_meta':
+	case 'add_term_meta':
+	case 'edit_user_meta':
+	case 'delete_user_meta':
+	case 'add_user_meta':
+		list( $_, $object_type, $_ ) = explode( '_', $cap );
+		$object_id = (int) $args[0];
+
+		switch ( $object_type ) {
+			case 'post':
+				$post = get_post( $object_id );
+				if ( ! $post ) {
+					break;
+				}
+
+				$sub_type = get_post_type( $post );
+				break;
+
+			case 'comment':
+				$comment = get_comment( $object_id );
+				if ( ! $comment ) {
+					break;
+				}
+
+				$sub_type = empty( $comment->comment_type ) ? 'comment' : $comment->comment_type;
+				break;
+
+			case 'term':
+				$term = get_term( $object_id );
+				if ( ! $term instanceof WP_Term ) {
+					break;
+				}
+
+				$sub_type = $term->taxonomy;
+				break;
+
+			case 'user':
+				$user = get_user_by( 'id', $object_id );
+				if ( ! $user ) {
+					break;
+				}
+
+				$sub_type = 'user';
+				break;
+		}
+
+		if ( empty( $sub_type ) ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		$caps = map_meta_cap( "edit_{$object_type}", $user_id, $object_id );
+
+		$meta_key = isset( $args[1] ) ? $args[1] : false;
+
+		$has_filter = has_filter( "auth_{$object_type}_meta_{$meta_key}" ) || has_filter( "auth_{$object_type}_{$sub_type}_meta_{$meta_key}" );
+		if ( $meta_key && $has_filter ) {
+
+			/**
+			 * Filters whether the user is allowed to edit meta.
+			 *
+			 * Use the {@see auth_post_$object_type_meta_$meta_key} filter to modify capabilities for
+			 * specific object types. Return true to have the mapped meta caps from edit_{$object_type} apply.
+			 *
+			 * The dynamic portion of the hook name, `$object_type` refers to the object type being filtered.
+			 * The dynamic portion of the hook name, `$meta_key`, refers to the meta key passed to map_meta_cap().
+			 *
+			 * @since 3.3.0 As 'auth_post_meta_{$meta_key}'.
+			 * @since 4.6.0
+			 *
+			 * @param bool   $allowed  Whether the user can add the post meta. Default false.
+			 * @param string $meta_key The meta key.
+			 * @param int    $post_id  Post ID.
+			 * @param int    $user_id  User ID.
+			 * @param string $cap      Capability name.
+			 * @param array  $caps     User capabilities.
+			 */
+			$allowed = apply_filters( "auth_{$object_type}_meta_{$meta_key}", false, $meta_key, $object_id, $user_id, $cap, $caps );
+
+			/**
+			 * Filters whether the user is allowed to add post meta to a post of a given type.
+			 *
+			 * Use the {@see auth_$object_type_$sub_type_meta_$meta_key} filter to modify capabilities for
+			 * specific object types/subtypes. Return true to have the mapped meta caps from edit_{$object_type} apply.
+			 *
+			 * The dynamic portion of the hook name, `$object_type` refers to the object type being filtered.
+			 * The dynamic portion of the hook name, `$sub_type` refers to the object subtype being filtered.
+			 * The dynamic portion of the hook name, `$meta_key`, refers to the meta key passed to map_meta_cap().
+			 *
+			 * @since 4.6.0 As 'auth_post_{$post_type}_meta_{$meta_key}'.
+			 * @since 4.7.0
+			 *
+			 * @param bool   $allowed  Whether the user can add the post meta. Default false.
+			 * @param string $meta_key The meta key.
+			 * @param int    $post_id  Post ID.
+			 * @param int    $user_id  User ID.
+			 * @param string $cap      Capability name.
+			 * @param array  $caps     User capabilities.
+			 */
+			$allowed = apply_filters( "auth_{$object_type}_{$sub_type}_meta_{$meta_key}", $allowed, $meta_key, $object_id, $user_id, $cap, $caps );
+
+			if ( ! $allowed ) {
+				$caps[] = $cap;
+			}
+		} elseif ( $meta_key && is_protected_meta( $meta_key, $object_type ) ) {
+			$caps[] = $cap;
+		}
+		break;
+	case 'edit_comment':
+		$comment = get_comment( $args[0] );
+		if ( ! $comment ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		$post = get_post( $comment->comment_post_ID );
+
+		/*
+		 * If the post doesn't exist, we have an orphaned comment.
+		 * Fall back to the edit_posts capability, instead.
+		 */
+		if ( $post ) {
+			$caps = map_meta_cap( 'edit_post', $user_id, $post->ID );
+		} else {
+			$caps = map_meta_cap( 'edit_posts', $user_id );
+		}
+		break;
+	case 'unfiltered_upload':
+		if ( defined('ALLOW_UNFILTERED_UPLOADS') && ALLOW_UNFILTERED_UPLOADS && ( !is_multisite() || is_super_admin( $user_id ) )  )
+			$caps[] = $cap;
+		else
+			$caps[] = 'do_not_allow';
+		break;
+	case 'edit_css' :
+	case 'unfiltered_html' :
+		// Disallow unfiltered_html for all users, even admins and super admins.
+		if ( defined( 'DISALLOW_UNFILTERED_HTML' ) && DISALLOW_UNFILTERED_HTML )
+			$caps[] = 'do_not_allow';
+		elseif ( is_multisite() && ! is_super_admin( $user_id ) )
+			$caps[] = 'do_not_allow';
+		else
+			$caps[] = 'unfiltered_html';
+		break;
+	case 'edit_files':
+	case 'edit_plugins':
+	case 'edit_themes':
+		// Disallow the file editors.
+		if ( defined( 'DISALLOW_FILE_EDIT' ) && DISALLOW_FILE_EDIT )
+			$caps[] = 'do_not_allow';
+		elseif ( ! wp_is_file_mod_allowed( 'capability_edit_themes' ) )
+			$caps[] = 'do_not_allow';
+		elseif ( is_multisite() && ! is_super_admin( $user_id ) )
+			$caps[] = 'do_not_allow';
+		else
+			$caps[] = $cap;
+		break;
+	case 'update_plugins':
+	case 'delete_plugins':
+	case 'install_plugins':
+	case 'upload_plugins':
+	case 'update_themes':
+	case 'delete_themes':
+	case 'install_themes':
+	case 'upload_themes':
+	case 'update_core':
+		// Disallow anything that creates, deletes, or updates core, plugin, or theme files.
+		// Files in uploads are excepted.
+		if ( ! wp_is_file_mod_allowed( 'capability_update_core' ) ) {
+			$caps[] = 'do_not_allow';
+		} elseif ( is_multisite() && ! is_super_admin( $user_id ) ) {
+			$caps[] = 'do_not_allow';
+		} elseif ( 'upload_themes' === $cap ) {
+			$caps[] = 'install_themes';
+		} elseif ( 'upload_plugins' === $cap ) {
+			$caps[] = 'install_plugins';
+		} else {
+			$caps[] = $cap;
+		}
+		break;
+	case 'install_languages':
+	case 'update_languages':
+		if ( ! wp_is_file_mod_allowed( 'can_install_language_pack' ) ) {
+			$caps[] = 'do_not_allow';
+		} elseif ( is_multisite() && ! is_super_admin( $user_id ) ) {
+			$caps[] = 'do_not_allow';
+		} else {
+			$caps[] = 'install_languages';
+		}
+		break;
+	case 'activate_plugins':
+	case 'deactivate_plugins':
+	case 'activate_plugin':
+	case 'deactivate_plugin':
+		$caps[] = 'activate_plugins';
+		if ( is_multisite() ) {
+			// update_, install_, and delete_ are handled above with is_super_admin().
+			$menu_perms = get_site_option( 'menu_items', array() );
+			if ( empty( $menu_perms['plugins'] ) )
+				$caps[] = 'manage_network_plugins';
+		}
+		break;
+	case 'delete_user':
+	case 'delete_users':
+		// If multisite only super admins can delete users.
+		if ( is_multisite() && ! is_super_admin( $user_id ) )
+			$caps[] = 'do_not_allow';
+		else
+			$caps[] = 'delete_users'; // delete_user maps to delete_users.
+		break;
+	case 'create_users':
+		if ( !is_multisite() )
+			$caps[] = $cap;
+		elseif ( is_super_admin( $user_id ) || get_site_option( 'add_new_users' ) )
+			$caps[] = $cap;
+		else
+			$caps[] = 'do_not_allow';
+		break;
+	case 'manage_links' :
+		if ( get_option( 'link_manager_enabled' ) )
+			$caps[] = $cap;
+		else
+			$caps[] = 'do_not_allow';
+		break;
+	case 'customize' :
+		$caps[] = 'edit_theme_options';
+		break;
+	case 'delete_site':
+		if ( is_multisite() ) {
+			$caps[] = 'manage_options';
+		} else {
+			$caps[] = 'do_not_allow';
+		}
+		break;
+	case 'edit_term':
+	case 'delete_term':
+	case 'assign_term':
+		$term_id = (int) $args[0];
+		$term = get_term( $term_id );
+		if ( ! $term || is_wp_error( $term ) ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		$tax = get_taxonomy( $term->taxonomy );
+		if ( ! $tax ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		if ( 'delete_term' === $cap && ( $term->term_id == get_option( 'default_' . $term->taxonomy ) ) ) {
+			$caps[] = 'do_not_allow';
+			break;
+		}
+
+		$taxo_cap = $cap . 's';
+
+		$caps = map_meta_cap( $tax->cap->$taxo_cap, $user_id, $term_id );
+
+		break;
+	case 'manage_post_tags':
+	case 'edit_categories':
+	case 'edit_post_tags':
+	case 'delete_categories':
+	case 'delete_post_tags':
+		$caps[] = 'manage_categories';
+		break;
+	case 'assign_categories':
+	case 'assign_post_tags':
+		$caps[] = 'edit_posts';
+		break;
+	case 'create_sites':
+	case 'delete_sites':
+	case 'manage_network':
+	case 'manage_sites':
+	case 'manage_network_users':
+	case 'manage_network_plugins':
+	case 'manage_network_themes':
+	case 'manage_network_options':
+	case 'upgrade_network':
+		$caps[] = $cap;
+		break;
+	case 'setup_network':
+		if ( is_multisite() ) {
+			$caps[] = 'manage_network_options';
+		} else {
+			$caps[] = 'manage_options';
+		}
+		break;
+	case 'export_others_personal_data':
+	case 'erase_others_personal_data':
+	case 'manage_privacy_options':
+		$caps[] = is_multisite() ? 'manage_network' : 'manage_options';
+		break;
+	default:
+		// Handle meta capabilities for custom post types.
+		global $post_type_meta_caps;
+		if ( isset( $post_type_meta_caps[ $cap ] ) ) {
+			$args = array_merge( array( $post_type_meta_caps[ $cap ], $user_id ), $args );
+			return call_user_func_array( 'map_meta_cap', $args );
+		}
+
+		// If no meta caps match, return the original cap.
+		$caps[] = $cap;
+	}
+
+	/**
+	 * Filters a user's capabilities depending on specific context and/or privilege.
+	 *
+	 * @since 2.8.0
+	 *
+	 * @param array  $caps    Returns the user's actual capabilities.
+	 * @param string $cap     Capability name.
+	 * @param int    $user_id The user ID.
+	 * @param array  $args    Adds the context to the cap. Typically the object ID.
+	 */
+	return apply_filters( 'map_meta_cap', $caps, $cap, $user_id, $args );
+}
+
+/**
+ * Whether the current user has a specific capability.
+ *
+ * While checking against particular roles in place of a capability is supported
+ * in part, this practice is discouraged as it may produce unreliable results.
+ *
+ * Note: Will always return true if the current user is a super admin, unless specifically denied.
+ *
+ * @since 2.0.0
+ *
+ * @see WP_User::has_cap()
+ * @see map_meta_cap()
+ *
+ * @param string $capability Capability name.
+ * @param int    $object_id  Optional. ID of the specific object to check against if `$capability` is a "meta" cap.
+ *                           "Meta" capabilities, e.g. 'edit_post', 'edit_user', etc., are capabilities used
+ *                           by map_meta_cap() to map to other "primitive" capabilities, e.g. 'edit_posts',
+ *                           'edit_others_posts', etc. Accessed via func_get_args() and passed to WP_User::has_cap(),
+ *                           then map_meta_cap().
+ * @return bool Whether the current user has the given capability. If `$capability` is a meta cap and `$object_id` is
+ *              passed, whether the current user has the given meta capability for the given object.
+ */
+function current_user_can( $capability ) {
+	$current_user = wp_get_current_user();
+
+	if ( empty( $current_user ) )
+		return false;
+
+	$args = array_slice( func_get_args(), 1 );
+	$args = array_merge( array( $capability ), $args );
+
+	return call_user_func_array( array( $current_user, 'has_cap' ), $args );
+}
+
+/**
+ * Whether the current user has a specific capability for a given site.
+ *
+ * @since 3.0.0
+ *
+ * @param int    $blog_id    Site ID.
+ * @param string $capability Capability name.
+ * @return bool Whether the user has the given capability.
+ */
+function current_user_can_for_blog( $blog_id, $capability ) {
+	$switched = is_multisite() ? switch_to_blog( $blog_id ) : false;
+
+	$current_user = wp_get_current_user();
+
+	if ( empty( $current_user ) ) {
+		if ( $switched ) {
+			restore_current_blog();
+		}
+		return false;
+	}
+
+	$args = array_slice( func_get_args(), 2 );
+	$args = array_merge( array( $capability ), $args );
+
+	$can = call_user_func_array( array( $current_user, 'has_cap' ), $args );
+
+	if ( $switched ) {
 		restore_current_blog();
 	}
 
-	// Success
-	return true;
+	return $can;
 }
 
 /**
- * Mark a users topics and replies as spam when the user is marked as spam
+ * Whether the author of the supplied post has a specific capability.
  *
- * @since bbPress (r3405)
+ * @since 2.9.0
  *
- * @global WPDB $wpdb
- * @param int $user_id Optional. User ID to unspam. Defaults to displayed user.
- *
- * @uses bbp_is_single_user()
- * @uses bbp_is_user_home()
- * @uses bbp_get_displayed_user_id()
- * @uses bbp_is_user_keymaster()
- * @uses get_blogs_of_user()
- * @uses bbp_get_topic_post_type()
- * @uses bbp_get_reply_post_type()
- * @uses switch_to_blog()
- * @uses get_post_type()
- * @uses bbp_unspam_topic()
- * @uses bbp_unspam_reply()
- * @uses restore_current_blog()
- *
- * @return If no user ID passed
+ * @param int|WP_Post $post       Post ID or post object.
+ * @param string      $capability Capability name.
+ * @return bool Whether the post author has the given capability.
  */
-function bbp_make_ham_user( $user_id = 0 ) {
-
-	// Use displayed user if it's not yourself
-	if ( empty( $user_id ) && bbp_is_single_user() && !bbp_is_user_home() )
-		$user_id = bbp_get_displayed_user_id();
-
-	// Bail if no user ID
-	if ( empty( $user_id ) )
+function author_can( $post, $capability ) {
+	if ( !$post = get_post($post) )
 		return false;
 
-	// Bail if user ID is keymaster
-	if ( bbp_is_user_keymaster( $user_id ) )
+	$author = get_userdata( $post->post_author );
+
+	if ( ! $author )
 		return false;
 
-	// Arm the torpedos
-	global $wpdb;
+	$args = array_slice( func_get_args(), 2 );
+	$args = array_merge( array( $capability ), $args );
 
-	// Get the blog IDs of the user to mark as spam
-	$blogs = get_blogs_of_user( $user_id, true );
+	return call_user_func_array( array( $author, 'has_cap' ), $args );
+}
 
-	// If user has no blogs, they are a guest on this site
-	if ( empty( $blogs ) )
-		$blogs[$wpdb->blogid] = array();
+/**
+ * Whether a particular user has a specific capability.
+ *
+ * @since 3.1.0
+ *
+ * @param int|WP_User $user       User ID or object.
+ * @param string      $capability Capability name.
+ * @return bool Whether the user has the given capability.
+ */
+function user_can( $user, $capability ) {
+	if ( ! is_object( $user ) )
+		$user = get_userdata( $user );
 
-	// Make array of post types to mark as spam
-	$post_types = array( bbp_get_topic_post_type(), bbp_get_reply_post_type() );
-	$post_types = "'" . implode( "', '", $post_types ) . "'";
+	if ( ! $user || ! $user->exists() )
+		return false;
 
-	// Loop through blogs and remove their posts
-	foreach ( (array) array_keys( $blogs ) as $blog_id ) {
+	$args = array_slice( func_get_args(), 2 );
+	$args = array_merge( array( $capability ), $args );
 
-		// Switch to the blog ID
-		switch_to_blog( $blog_id );
+	return call_user_func_array( array( $user, 'has_cap' ), $args );
+}
 
-		// Get topics and replies
-		$posts = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM {$wpdb->posts} WHERE post_author = %d AND post_status = '%s' AND post_type IN ( {$post_types} )", $user_id, bbp_get_spam_status_id() ) );
+/**
+ * Retrieves the global WP_Roles instance and instantiates it if necessary.
+ *
+ * @since 4.3.0
+ *
+ * @global WP_Roles $wp_roles WP_Roles global instance.
+ *
+ * @return WP_Roles WP_Roles global instance if not already instantiated.
+ */
+function wp_roles() {
+	global $wp_roles;
 
-		// Loop through posts and spam them
-		if ( !empty( $posts ) ) {
-			foreach ( $posts as $post_id ) {
+	if ( ! isset( $wp_roles ) ) {
+		$wp_roles = new WP_Roles();
+	}
+	return $wp_roles;
+}
 
-				// The routines for topics ang replies are different, so use the
-				// correct one based on the post type
-				switch ( get_post_type( $post_id ) ) {
+/**
+ * Retrieve role object.
+ *
+ * @since 2.0.0
+ *
+ * @param string $role Role name.
+ * @return WP_Role|null WP_Role object if found, null if the role does not exist.
+ */
+function get_role( $role ) {
+	return wp_roles()->get_role( $role );
+}
 
-					case bbp_get_topic_post_type() :
-						bbp_unspam_topic( $post_id );
-						break;
+/**
+ * Add role, if it does not exist.
+ *
+ * @since 2.0.0
+ *
+ * @param string $role Role name.
+ * @param string $display_name Display name for role.
+ * @param array $capabilities List of capabilities, e.g. array( 'edit_posts' => true, 'delete_posts' => false );
+ * @return WP_Role|null WP_Role object if role is added, null if already exists.
+ */
+function add_role( $role, $display_name, $capabilities = array() ) {
+	if ( empty( $role ) ) {
+		return;
+	}
+	return wp_roles()->add_role( $role, $display_name, $capabilities );
+}
 
-					case bbp_get_reply_post_type() :
-						bbp_unspam_reply( $post_id );
-						break;
-				}
-			}
-		}
+/**
+ * Remove role, if it exists.
+ *
+ * @since 2.0.0
+ *
+ * @param string $role Role name.
+ */
+function remove_role( $role ) {
+	wp_roles()->remove_role( $role );
+}
 
-		// Switch back to current blog
-		restore_current_blog();
+/**
+ * Retrieve a list of super admins.
+ *
+ * @since 3.0.0
+ *
+ * @global array $super_admins
+ *
+ * @return array List of super admin logins
+ */
+function get_super_admins() {
+	global $super_admins;
+
+	if ( isset($super_admins) )
+		return $super_admins;
+	else
+		return get_site_option( 'site_admins', array('admin') );
+}
+
+/**
+ * Determine if user is a site admin.
+ *
+ * @since 3.0.0
+ *
+ * @param int $user_id (Optional) The ID of a user. Defaults to the current user.
+ * @return bool True if the user is a site admin.
+ */
+function is_super_admin( $user_id = false ) {
+	if ( ! $user_id || $user_id == get_current_user_id() )
+		$user = wp_get_current_user();
+	else
+		$user = get_userdata( $user_id );
+
+	if ( ! $user || ! $user->exists() )
+		return false;
+
+	if ( is_multisite() ) {
+		$super_admins = get_super_admins();
+		if ( is_array( $super_admins ) && in_array( $user->user_login, $super_admins ) )
+			return true;
+	} else {
+		if ( $user->has_cap('delete_users') )
+			return true;
 	}
 
-	// Success
-	return true;
+	return false;
 }
 
 /**
- * Checks if the user has been marked as deleted.
+ * Grants Super Admin privileges.
  *
- * @since bbPress (r3355)
+ * @since 3.0.0
  *
- * @param int $user_id int The ID for the user.
- * @return bool True if deleted, False if not.
+ * @global array $super_admins
+ *
+ * @param int $user_id ID of the user to be granted Super Admin privileges.
+ * @return bool True on success, false on failure. This can fail when the user is
+ *              already a super admin or when the `$super_admins` global is defined.
  */
-function bbp_is_user_deleted( $user_id = 0 ) {
-
-	// Default to current user
-	if ( empty( $user_id ) && is_user_logged_in() )
-		$user_id = bbp_get_current_user_id();
-
-	// No user to check
-	if ( empty( $user_id ) )
+function grant_super_admin( $user_id ) {
+	// If global super_admins override is defined, there is nothing to do here.
+	if ( isset( $GLOBALS['super_admins'] ) || ! is_multisite() ) {
 		return false;
+	}
 
-	// Assume user is not deleted
-	$is_deleted = false;
+	/**
+	 * Fires before the user is granted Super Admin privileges.
+	 *
+	 * @since 3.0.0
+	 *
+	 * @param int $user_id ID of the user that is about to be granted Super Admin privileges.
+	 */
+	do_action( 'grant_super_admin', $user_id );
 
-	// Get user data
+	// Directly fetch site_admins instead of using get_super_admins()
+	$super_admins = get_site_option( 'site_admins', array( 'admin' ) );
+
 	$user = get_userdata( $user_id );
+	if ( $user && ! in_array( $user->user_login, $super_admins ) ) {
+		$super_admins[] = $user->user_login;
+		update_site_option( 'site_admins' , $super_admins );
 
-	// No user found
-	if ( empty( $user ) ) {
-		$is_deleted = true;
+		/**
+		 * Fires after the user is granted Super Admin privileges.
+		 *
+		 * @since 3.0.0
+		 *
+		 * @param int $user_id ID of the user that was granted Super Admin privileges.
+		 */
+		do_action( 'granted_super_admin', $user_id );
+		return true;
+	}
+	return false;
+}
 
-	// Check if deleted
-	} elseif ( !empty( $user->deleted ) ) {
-		$is_deleted = true;
+/**
+ * Revokes Super Admin privileges.
+ *
+ * @since 3.0.0
+ *
+ * @global array $super_admins
+ *
+ * @param int $user_id ID of the user Super Admin privileges to be revoked from.
+ * @return bool True on success, false on failure. This can fail when the user's email
+ *              is the network admin email or when the `$super_admins` global is defined.
+ */
+function revoke_super_admin( $user_id ) {
+	// If global super_admins override is defined, there is nothing to do here.
+	if ( isset( $GLOBALS['super_admins'] ) || ! is_multisite() ) {
+		return false;
 	}
 
-	return (bool) apply_filters( 'bbp_core_is_user_deleted', $is_deleted );
+	/**
+	 * Fires before the user's Super Admin privileges are revoked.
+	 *
+	 * @since 3.0.0
+	 *
+	 * @param int $user_id ID of the user Super Admin privileges are being revoked from.
+	 */
+	do_action( 'revoke_super_admin', $user_id );
+
+	// Directly fetch site_admins instead of using get_super_admins()
+	$super_admins = get_site_option( 'site_admins', array( 'admin' ) );
+
+	$user = get_userdata( $user_id );
+	if ( $user && 0 !== strcasecmp( $user->user_email, get_site_option( 'admin_email' ) ) ) {
+		if ( false !== ( $key = array_search( $user->user_login, $super_admins ) ) ) {
+			unset( $super_admins[$key] );
+			update_site_option( 'site_admins', $super_admins );
+
+			/**
+			 * Fires after the user's Super Admin privileges are revoked.
+			 *
+			 * @since 3.0.0
+			 *
+			 * @param int $user_id ID of the user Super Admin privileges were revoked from.
+			 */
+			do_action( 'revoked_super_admin', $user_id );
+			return true;
+		}
+	}
+	return false;
 }
 
 /**
- * Checks if user is active
+ * Filters the user capabilities to grant the 'install_languages' capability as necessary.
  *
- * @since bbPress (r3502)
+ * A user must have at least one out of the 'update_core', 'install_plugins', and
+ * 'install_themes' capabilities to qualify for 'install_languages'.
  *
- * @uses is_user_logged_in() To check if user is logged in
- * @uses bbp_get_displayed_user_id() To get current user ID
- * @uses bbp_is_user_spammer() To check if user is spammer
- * @uses bbp_is_user_deleted() To check if user is deleted
+ * @since 4.9.0
  *
- * @param int $user_id The user ID to check
- * @return bool True if public, false if not
+ * @param array $allcaps An array of all the user's capabilities.
+ * @return array Filtered array of the user's capabilities.
  */
-function bbp_is_user_active( $user_id = 0 ) {
-
-	// Default to current user
-	if ( empty( $user_id ) && is_user_logged_in() )
-		$user_id = bbp_get_current_user_id();
-
-	// No user to check
-	if ( empty( $user_id ) )
-		return false;
-
-	// Check spam
-	if ( bbp_is_user_spammer( $user_id ) )
-		return false;
-
-	// Check deleted
-	if ( bbp_is_user_deleted( $user_id ) )
-		return false;
-
-	// Assume true if not spam or deleted
-	return true;
-}
-
-/**
- * Checks if user is not active.
- *
- * @since bbPress (r3502)
- *
- * @uses is_user_logged_in() To check if user is logged in
- * @uses bbp_get_displayed_user_id() To get current user ID
- * @uses bbp_is_user_active() To check if user is active
- *
- * @param int $user_id The user ID to check. Defaults to current user ID
- * @return bool True if inactive, false if active
- */
-function bbp_is_user_inactive( $user_id = 0 ) {
-
-	// Default to current user
-	if ( empty( $user_id ) && is_user_logged_in() )
-		$user_id = bbp_get_current_user_id();
-
-	// No user to check
-	if ( empty( $user_id ) )
-		return false;
-
-	// Return the inverse of active
-	return !bbp_is_user_active( $user_id );
-}
-
-/**
- * Checks if user is a keymaster
- *
- * @since bbPress (r4783)
- *
- * @param int $user_id 
- * @return bool True if keymaster, false if not
- */
-function bbp_is_user_keymaster( $user_id = 0 ) {
-
-	// Default to current user ID if none is passed
-	$_user_id = (int) ! empty( $user_id ) ? $user_id : bbp_get_current_user_id();
-
-	// Filter and return
-	return (bool) apply_filters( 'bbp_is_user_keymaster', user_can( $_user_id, 'keep_gate' ), $_user_id, $user_id );
-}
-
-/**
- * Does a user have a profile for the current site
- *
- * @since bbPress (r4362)
- *
- * @param int $user_id User ID to check
- * @param int $blog_id Blog ID to check
- *
- * @uses bbp_get_user_id() To verify the user ID
- * @uses get_userdata() To get the user's data
- * @uses bbp_is_user_keymaster() To determine if user can see inactive users
- * @uses bbp_is_user_inactive() To check if user is spammer or deleted
- * @uses apply_filters() To allow override of this functions result
- *
- * @return boolean Whether or not the user has a profile on this blog_id
- */
-function bbp_user_has_profile( $user_id = 0 ) {
-
-	// Assume every user has a profile
-	$retval  = true;
-
-	// Validate user ID, default to displayed or current user
-	$user_id = bbp_get_user_id( $user_id, true, true );
-
-	// Try to get this user's data
-	$user    = get_userdata( $user_id );
-
-	// No user found, return false
-	if ( empty( $user ) ) {
-		$retval = false;
-
-	// User is inactive, and current user is not a keymaster
-	} elseif ( ! bbp_is_user_keymaster() && bbp_is_user_inactive( $user->ID ) ) {
-		$retval = false;
+function wp_maybe_grant_install_languages_cap( $allcaps ) {
+	if ( ! empty( $allcaps['update_core'] ) || ! empty( $allcaps['install_plugins'] ) || ! empty( $allcaps['install_themes'] ) ) {
+		$allcaps['install_languages'] = true;
 	}
 
-	// Filter and return
-	return (bool) apply_filters( 'bbp_show_user_profile', $retval, $user_id );
+	return $allcaps;
 }
