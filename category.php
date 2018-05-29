@@ -1,49 +1,51 @@
-<?php get_header(); ?>
-<div id="content" class="clearfix">
-  <div id="main" class="col-sm-8 clearfix" role="main">
-    <div id="home-main" class="home-main home">
-      <header>
-        <div class="page-catheader cat-catheader">
-            <h4 class="cat-title">
-				<?php if ( have_posts() ) : 
-                	?><span><?php _e('Category','mywiki'); echo " : "?></span>
-				<?php echo single_cat_title( '', false );
-                endif; ?>
-            </h4>
-         </div>
-      </header>
-      <?php if (function_exists('mywiki_custom_breadcrumbs')) mywiki_custom_breadcrumbs();
-        if (have_posts()) : while (have_posts()) : the_post(); ?>
-      <article id="post-<?php the_ID(); ?>" <?php post_class('clearfix'); ?> role="article">
-        <header>
-            <div class="cat-hadding">
-                 <a href="<?php the_permalink() ?>" rel="bookmark" title="<?php the_title_attribute(); ?>"><?php the_title();?></a>
-            </div>
-            <p class="meta post-meta-entry"><?php mywiki_entry_meta(); ?></p>
-            <p class="meta post-meta-entry"><?php the_tags(); ?></p>
+<?php
+    get_header();
+    get_template_part('navigation');
+?>
+
+<div class="catContainer">
+    <section class="entryTypePostExcerptHeader">
+        <header class="entryHeader">
+            <h1 class="entryTitle">
+                <?php single_cat_title(); ?>
+            </h1>
         </header>
-        <!-- end article header -->
-        <section class="post_content">
-          <?php the_post_thumbnail( 'wpbs-featured' ); ?>
-          <?php the_excerpt(); ?>
-        </section>
-        <!-- end article section -->
-      </article>
-      <!-- end article -->
-      <?php endwhile; ?>
-	  <?php endif; ?>
-		<!--Pagination Start-->
-    <?php if(get_option('posts_per_page ') < $wp_query->found_posts) { ?>
-    <nav class="mywiki-nav">
-            <span class="mywiki-nav-previous"><?php previous_posts_link(); ?></span>
-            <span class="mywiki-nav-next"><?php next_posts_link(); ?></span>
-        </nav>
-    <?php } ?>
-    <!--Pagination End-->
-    </div>
-  </div>
-  <!-- end #main -->
-  <?php get_sidebar(); ?>
+
+        <div class="entryContent">
+            <?php
+                // category description if exists
+                $category = get_the_category();
+                if( category_description( $category[0]->cat_ID ) ) {
+                    echo '<p class="categoryDescription">'.category_description( $category[0]->cat_ID ).'</p>';
+                }
+            ?>
+        </div>
+    </section>
+
+    <section class="entryTypePostExcerptContainer">
+        <?php
+        if ( have_posts() ) : while (have_posts()) : the_post();
+            // get post excerpt
+            wikiwp_get_post_excerpt($post);
+        endwhile;
+        ?>
+    </section>
+
+    <section class="entryTypePostExcerptMeta">
+        <?php
+        // Pagination
+        echo '<div class="posts-pagination">';
+        previous_posts_link('<span class="next-posts-link">&laquo; '.__('Newer Entries', 'wikiwp').'</span>');
+        next_posts_link('<span class="previous-posts-link">'.__('Older Entries', 'wikiwp').' &raquo;</span>');
+        echo '</div>'; // End of .posts-pagination
+        // If no posts were found
+        endif; ?>
+    </section>
 </div>
-<!-- end #content -->
-<?php get_footer(); ?>
+
+<?php
+// sidebar
+get_sidebar();
+
+// footer
+get_footer();

@@ -1,49 +1,52 @@
-<?php get_header(); ?>
-<div id="content" class="clearfix">
-  <div id="main" class="col-sm-8 clearfix" role="main">
-    <div id="home-main" class="home-main home">
-      <header>
-        <div class="page-catheader cat-catheader">
-            <h4 class="cat-title">
-				<?php if ( have_posts() ) : 
-                	?><span><?php _e('Author','mywiki'); echo " : "?></span>
-				<?php echo get_the_author(); 
-                endif; ?>
-            </h4>
-         </div>
-      </header>
-      <?php if (function_exists('mywiki_custom_breadcrumbs')) mywiki_custom_breadcrumbs();
-      if (have_posts()) : while (have_posts()) : the_post(); ?>
-      <article id="post-<?php the_ID(); ?>" <?php post_class('clearfix'); ?> role="article">
-        <header>
-            <div class="cat-hadding">
-                 <a href="<?php the_permalink() ?>" rel="bookmark" title="<?php the_title_attribute(); ?>"><?php the_title();?></a>
-            </div>
-            <p class="meta post-meta-entry"><?php mywiki_entry_meta(); ?></p>
-            <p class="meta post-meta-entry"><?php the_tags(); ?></p>
-        </header>
-        <!-- end article header -->
-        <section class="post_content">
-          <?php the_post_thumbnail( 'wpbs-featured' ); ?>
-          <?php the_excerpt(); ?>
-        </section>
-        <!-- end article section -->
-      </article>
-      <!-- end article -->
-      <?php endwhile;
-	       endif; ?>
-		<!--Pagination Start-->
-    <?php if(get_option('posts_per_page ') < $wp_query->found_posts) { ?>
-    <nav class="mywiki-nav">
-            <span class="mywiki-nav-previous"><?php previous_posts_link(); ?></span>
-            <span class="mywiki-nav-next"><?php next_posts_link(); ?></span>
-        </nav>
-    <?php } ?>
-    <!--Pagination End-->
-    </div>
-  </div>
-  <!-- end #main -->
-  <?php get_sidebar(); ?>
-</div>
-<!-- end #content -->
-<?php get_footer(); ?>
+<?php
+    get_header();
+    get_template_part('navigation');
+
+    echo '<div class="content">',
+    // author name
+         '<h1 class="page-title">'.get_the_author().'</h1>',
+    // avatar
+         '<div class="avatar-profile">',
+         '<div class="alignleft avatar">'.get_avatar( get_the_author_meta( 'email' ), '150' ).'</div>';
+    // description
+         if ( get_the_author_meta('description') ) : // If a user wrote a description
+        echo '<p class="author-description">'.get_the_author_meta('description' ).'</p>';
+         endif;
+    // website
+        if ( get_the_author_meta('user_url') ) : // If a user set a website 
+        echo '<p class="author-url"><strong>';
+        _e('Website', 'wikiwp');
+        echo ':</strong> <a href="'.get_the_author_meta('user_url').'" title="'.get_the_author_meta('user_url').'" target="_blank">'.get_the_author_meta('user_url').'</a></p>';
+        endif;
+    // author's posts
+    echo '<div class="author-postings">',
+         '<h3>'.get_the_author();
+         _e('&acute;s postings', 'wikiwp');
+    echo '</h3>',
+         '<ul>'; 
+    if ( have_posts() ) : while ( have_posts() ) : the_post();
+    echo '<li>',
+         '<a href="'.get_permalink().'" rel="bookmark" title="'.get_the_title().'">'.get_the_title().'</a>',
+         '</li>';
+         endwhile;
+    echo '</ul>';
+         // no posts by this autor so far 
+         else:
+    echo '<p>';
+    _e('No posts by this author.', 'wikiwp');
+    echo '</p>';
+    endif;
+    echo '</div>', // end of .author-postings
+         '</div>';// end of .avatar-profile
+    // author list
+    echo '<div class="author-list">',
+         '<h2>';
+    _e('Our authors', 'wikiwp');
+    echo '</h2>',
+         '<ul>';
+         wp_list_authors('show_fullname=1&optioncount=1&orderby=post_count&order=DESC');
+    echo '</ul>';
+    echo '</div>',
+         '</div>'; // end of .content
+    // footer
+    get_footer();
