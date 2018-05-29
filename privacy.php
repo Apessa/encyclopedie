@@ -1,13 +1,13 @@
 <?php
 /**
- * Updates network administration panel.
+ * User Dashboard Privacy administration panel.
  *
  * @package WordPress
- * @subpackage Multisite
- * @since 3.1.0
+ * @subpackage Administration
+ * @since 4.9.0
  */
 
 /** Load WordPress Administration Bootstrap */
 require_once( dirname( __FILE__ ) . '/admin.php' );
 
-require( ABSPATH . 'wp-admin/update-core.php' );
+require( ABSPATH . 'wp-admin/privacy.php' );
